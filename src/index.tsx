@@ -7,10 +7,14 @@ export type {
   BoardProps,
   CardDragEndEvent,
   CardDragStartEvent,
+  CardDropCheck,
   CardRenderInfo,
   ColumnRenderInfo,
+  KanbanAutoScroll,
+  KanbanDragStyle,
   KanbanLabels,
   KanbanStyles,
+  PlaceholderRenderInfo,
 } from './components/types';
 
 // Board helpers

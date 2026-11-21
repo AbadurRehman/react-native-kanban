@@ -1,4 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from 'react';
 import {
   StyleSheet,
   Text,
@@ -15,7 +22,7 @@ import Animated, {
   useFrameCallback,
   withTiming,
 } from 'react-native-reanimated';
-import { EDGE_Y, LAYOUT_MS, MAX_SCROLL_SPEED } from '../dnd/constants';
+import { LAYOUT_MS } from '../dnd/constants';
 import { useDragContext } from '../dnd/DragContext';
 import { reportDragError } from '../dnd/debug';
 import { updateDragTarget } from '../dnd/engine';
@@ -58,6 +65,9 @@ interface ColumnProps<
   renderColumnFooter: BoardBaseProps<TCard, TColumn>['renderColumnFooter'];
   renderEmptyColumn: BoardBaseProps<TCard, TColumn>['renderEmptyColumn'];
   onCardPress: BoardBaseProps<TCard, TColumn>['onCardPress'];
+  canDragCard: BoardBaseProps<TCard, TColumn>['canDragCard'];
+  /** Custom landing spot (`renderPlaceholder`) for the current drag. */
+  placeholder: ReactNode;
 
   /** Any card on the board is being dragged (locks scrolling, adds spacers). */
   isDragging: boolean;
@@ -88,6 +98,8 @@ function ColumnImpl<
   renderColumnFooter,
   renderEmptyColumn,
   onCardPress,
+  canDragCard,
+  placeholder,
   isDragging,
   draggedHeight,
   hiddenCardId,
@@ -188,8 +200,8 @@ function ColumnImpl<
         fingerY,
         layout.viewportTop,
         layout.viewportTop + layout.viewportHeight,
-        EDGE_Y,
-        MAX_SCROLL_SPEED
+        s.scrollEdgeY.value,
+        s.scrollSpeed.value
       ) * frames;
     if (speed === 0) return;
     const next = clampScroll(
@@ -340,6 +352,7 @@ function ColumnImpl<
                     column={column}
                     index={item.index}
                     hidden={item.hidden}
+                    draggable={canDragCard?.(item.card, column) ?? true}
                     theme={theme}
                     base={base}
                     styles={styles}
@@ -360,7 +373,9 @@ function ColumnImpl<
                   end={isEnd}
                   base={base}
                   styles={styles}
-                />
+                >
+                  {placeholder}
+                </Spacer>
               );
             })
           )}

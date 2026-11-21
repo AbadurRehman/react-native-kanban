@@ -6,7 +6,7 @@
 
 Customizable drag-and-drop Kanban board for React Native, built on [Reanimated](https://docs.swmansion.com/react-native-reanimated/) and [Gesture Handler](https://docs.swmansion.com/react-native-gesture-handler/). Inspired by [react-kanban](https://github.com/lourenci/react-kanban), so the data model will feel familiar if you've used it on the web.
 
-> ⚠️ **Work in progress.** `0.2.x` adds long-press drag and drop. Drag customization (custom previews, locked cards) lands in `0.3.0`. See the [roadmap](#roadmap).
+> ⚠️ **Work in progress.** `0.3.x` adds drag customization: lift style, custom previews and landing spots, hold time, auto-scroll and locked cards. Column reordering and large boards land in `0.4.0`. See the [roadmap](#roadmap).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/AbadurRehman/react-native-kanban/main/docs/images/drag.png" alt="Dragging a card in light and dark themes" width="560" />
@@ -99,6 +99,13 @@ The board fills its parent, so give the parent a size (for example `flex: 1`).
 | `onCardDragStart` | `({ card, source }) => void` | | A card was lifted. A good place for haptics. |
 | `onCardDragEnd` | `({ card, source, destination }) => void` | | A card was dropped. In controlled mode, apply it with `moveCard`. |
 | `disableCardDrag` | `boolean` | `false` | Turn off long-press dragging. |
+| `dragActivationDelay` | `number` | `300` | How long to press before a card lifts, in ms. `0` lifts on the first movement. |
+| `canDragCard` | `(card, column) => boolean` | | Return `false` to lock a card in place. |
+| `canDropCard` | `({ card, fromColumn, toColumn }) => boolean` | | Return `false` to keep a card out of a column. |
+| `dragStyle` | `{ scale?, rotation?, opacity? }` | `{ scale: 1.03, rotation: 2, opacity: 1 }` | How the floating card looks at full lift. |
+| `renderDragPreview` | `(card, { column, index, theme }) => ReactNode` | the card | Replace the floating card. |
+| `renderPlaceholder` | `({ card, height, theme }) => ReactNode` | dashed box | Replace the landing spot. |
+| `autoScroll` | `boolean \| { edge?, speed? }` | `true` | Scroll near edges while dragging. `false` turns it off. |
 | `theme` | `'light' \| 'dark' \| 'auto' \| KanbanThemeInput` | `'light'` | Preset or custom theme. `'auto'` follows the device. |
 | `density` | `'comfortable' \| 'compact'` | `'comfortable'` | Compact tightens spacing and type. |
 | `columnWidth` | `number \| 'fullScreen'` | `280` (`240` compact) | `'fullScreen'` shows one column per screen. |
@@ -118,7 +125,7 @@ Wrap render props in `useCallback` so unchanged columns and cards skip re-render
 
 ## Drag and drop
 
-- **Lift:** press and hold a card for 300 ms. Moving your finger before that scrolls instead, so drags and scrolls don't fight.
+- **Lift:** press and hold a card for 300 ms (`dragActivationDelay`). Moving your finger before that scrolls instead, so drags and scrolls don't fight.
 - **Move:** the card follows your finger on the UI thread. A dashed landing spot opens where it will go, and the other cards slide out of the way. Empty columns light up as drop zones.
 - **Auto-scroll:** drag near the left or right edge to scroll the board, or near a column's top or bottom to scroll that column.
 - **Drop:** the card glides into its spot. `source` and `destination` use the same shape as `moveCard`:
@@ -145,6 +152,39 @@ import * as Haptics from 'expo-haptics';
 ```
 
 During a drag nothing re-renders: React renders once when the card lifts and once when it drops. Everything in between runs on the UI thread.
+
+### Customizing drags
+
+```tsx
+<Board
+  board={board}
+  onCardDragEnd={({ source, destination }) =>
+    setBoard((b) => moveCard(b, source, destination))
+  }
+  // Feel
+  dragActivationDelay={200}
+  dragStyle={{ scale: 1.06, rotation: 0, opacity: 0.95 }}
+  autoScroll={{ edge: 80, speed: 20 }}
+  // Rules
+  canDragCard={(card, column) => column.id !== 'done'}
+  canDropCard={({ fromColumn, toColumn }) =>
+    toColumn.id !== 'review' || fromColumn.id === 'doing'
+  }
+  // Looks
+  renderDragPreview={(card) => <Chip title={card.title} />}
+  renderPlaceholder={() => (
+    <View style={{ flex: 1, borderRadius: 12, backgroundColor: '#EEF2FF' }} />
+  )}
+/>
+```
+
+- **`dragActivationDelay`**: `0` lifts a card on the first movement instead of a long press. Columns can then only be scrolled from outside the cards.
+- **`dragStyle`**: the floating card grows to `scale` and tilts by `rotation` degrees as it lifts. `{ scale: 1, rotation: 0 }` keeps it flat.
+- **`canDragCard`**: a locked card doesn't lift. Tapping it still calls `onCardPress`.
+- **`canDropCard`**: checked once per column when a drag starts. A blocked column shows no landing spot, and dropping there puts the card back (`destination` equals `source`). The card's own column can be blocked too, which stops reordering.
+- **`renderDragPreview`**: draws the card that follows the finger. It gets the same info as `renderCard`, and no default shadow, so style it yourself.
+- **`renderPlaceholder`**: draws the landing spot at the dragged card's height. Use `flex: 1` to fill it.
+- **`autoScroll`**: `edge` is how close to an edge scrolling starts (default 64 at the board's sides, 56 at a column's top and bottom); `speed` is the top speed in points per frame (default 14).
 
 ## Theming
 
@@ -252,20 +292,20 @@ interface TaskCard extends KanbanCard {
 const board: KanbanBoard<TaskCard> = { columns: [] };
 ```
 
-Data types: `KanbanBoard`, `KanbanColumn`, `KanbanCard`, `KanbanId`, `CardSource`, `CardDestination`, `ColumnSource`, `ColumnDestination`. Event types: `CardDragStartEvent`, `CardDragEndEvent`.
+Data types: `KanbanBoard`, `KanbanColumn`, `KanbanCard`, `KanbanId`, `CardSource`, `CardDestination`, `ColumnSource`, `ColumnDestination`. Event types: `CardDragStartEvent`, `CardDragEndEvent`. Drag option types: `KanbanDragStyle`, `KanbanAutoScroll`, `PlaceholderRenderInfo`, `CardDropCheck`.
 
 ## Roadmap
 
 - [x] **0.0.x: Setup.** Library scaffold, React Native CLI + Expo example apps, CI, data model types.
 - [x] **0.1.0: Static board + theming.** `<Board />`, theme presets, style overrides, render props, layout options, helpers.
 - [x] **0.2.0: Card drag & drop.** Long-press drag, placeholder, auto-scroll, controlled/uncontrolled, callbacks.
-- [ ] **0.3.0: Drag customization.** `dragStyle`, custom drag preview/placeholder, `canDragCard`/`canDropCard`.
+- [x] **0.3.0: Drag customization.** `dragStyle`, custom drag preview and placeholder, activation delay, auto-scroll settings, `canDragCard`/`canDropCard`.
 - [ ] **0.4.0: Columns & scale.** Column reordering, virtualization, 500+ card benchmarks.
 - [ ] **1.0.0: Polish.** Accessibility, RTL, tablets, web demo, migration guide from react-kanban.
 
 ## Example apps
 
-This repo has two example apps that use the library straight from `src/`. Both render the same demo from [`example-shared/`](./example-shared): drag cards around, add cards, and switch theme, density, column width/height, dragging and card style at runtime. The line under the controls shows the last drag or tap event.
+This repo has two example apps that use the library straight from `src/`. Both render the same demo from [`example-shared/`](./example-shared): drag cards around, add cards, and switch theme, density, column width/height, dragging and card style at runtime. **Drag settings** (top right) opens a second row to try every drag option live: lift style, compact preview, tinted landing spot, hold time, auto-scroll speed, and rules (Done is locked; Review only takes cards from In progress). The line under the controls shows the last drag or tap event.
 
 | App | Folder | Run |
 | --- | --- | --- |
