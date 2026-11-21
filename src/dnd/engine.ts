@@ -42,12 +42,7 @@ export function updateDragTarget(
   );
   if (key === null) return;
   const column = layouts[key]!;
-  const cards = visibleCards(
-    column.cards,
-    s.draggedKey.value,
-    key === s.sourceKey.value ? dragged : null,
-    s.space.value
-  );
+  const cards = visibleCards(column, s.draggedKey.value, s.cardGap.value);
   const index = insertIndexAt(
     cards,
     centerY - column.viewportTop + column.scrollY
@@ -71,12 +66,7 @@ export function dropPosition(s: DragShared): { x: number; y: number } | null {
   if (key === null || !dragged) return null;
   const column = s.layouts.value[key];
   if (!column) return null;
-  const cards = visibleCards(
-    column.cards,
-    s.draggedKey.value,
-    key === s.sourceKey.value ? dragged : null,
-    s.space.value
-  );
+  const cards = visibleCards(column, s.draggedKey.value, s.cardGap.value);
   const slot = slotPosition(cards, s.targetIndex.value, s.cardGap.value, {
     x: column.empty?.x ?? s.cardInset.value,
     y: column.empty?.y ?? 0,

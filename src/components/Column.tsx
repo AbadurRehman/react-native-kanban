@@ -141,6 +141,14 @@ function ColumnImpl<
     () => () => removeColumnLayout(layouts, columnKey),
     [layouts, columnKey]
   );
+  // Card order for hit testing (positions are stacked from it).
+  const cardOrder = useMemo(
+    () => column.cards.map((card) => keyOf(card.id)),
+    [column.cards]
+  );
+  useEffect(() => {
+    patchColumnLayout(layouts, columnKey, { order: cardOrder });
+  }, [layouts, columnKey, cardOrder]);
 
   // Auto-scroll this column while a card hovers near its top or bottom edge.
   const autoScroll = useFrameCallback((frame) => {
@@ -251,74 +259,81 @@ function ColumnImpl<
         </View>
       )}
 
-      <ScrollView
-        ref={scrollRef}
-        testID={`kanban-column-scroll-${column.id}`}
+      {/* Measured wrapper: the ScrollView may sit inside a gesture wrapper
+          (e.g. on web), which would skew its own onLayout coordinates. */}
+      <View
+        testID={`kanban-column-viewport-${column.id}`}
         style={fill ? base.columnScrollFill : base.columnScroll}
-        contentContainerStyle={[base.columnContent, styles?.columnContent]}
-        showsVerticalScrollIndicator={false}
-        scrollEnabled={!isDragging}
-        scrollEventThrottle={16}
         onLayout={handleViewportLayout}
-        onContentSizeChange={handleContentSizeChange}
-        onScroll={handleScroll}
       >
-        {isEmpty ? (
-          <View onLayout={handleEmptyLayout} testID="kanban-empty-column">
-            {renderEmptyColumn?.(column, info) ?? (
-              <View style={[base.emptyColumn, styles?.emptyColumn]}>
-                <Text style={[base.emptyColumnText, styles?.emptyColumnText]}>
-                  {labels.emptyColumn}
-                </Text>
-              </View>
-            )}
-            {isDragging ? (
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  StyleSheet.absoluteFill,
-                  base.placeholder,
-                  styles?.placeholder,
-                  dropZoneStyle,
-                ]}
-              />
-            ) : null}
-          </View>
-        ) : (
-          items.map((item) => {
-            if (item.type === 'card') {
+        <ScrollView
+          ref={scrollRef}
+          testID={`kanban-column-scroll-${column.id}`}
+          style={fill ? base.columnScrollFill : base.columnScroll}
+          contentContainerStyle={[base.columnContent, styles?.columnContent]}
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={!isDragging}
+          scrollEventThrottle={16}
+          onContentSizeChange={handleContentSizeChange}
+          onScroll={handleScroll}
+        >
+          {isEmpty ? (
+            <View onLayout={handleEmptyLayout} testID="kanban-empty-column">
+              {renderEmptyColumn?.(column, info) ?? (
+                <View style={[base.emptyColumn, styles?.emptyColumn]}>
+                  <Text style={[base.emptyColumnText, styles?.emptyColumnText]}>
+                    {labels.emptyColumn}
+                  </Text>
+                </View>
+              )}
+              {isDragging ? (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    StyleSheet.absoluteFill,
+                    base.placeholder,
+                    styles?.placeholder,
+                    dropZoneStyle,
+                  ]}
+                />
+              ) : null}
+            </View>
+          ) : (
+            items.map((item) => {
+              if (item.type === 'card') {
+                return (
+                  <CardItem
+                    key={keyOf(item.card.id)}
+                    card={item.card}
+                    column={column}
+                    index={item.index}
+                    hidden={item.hidden}
+                    theme={theme}
+                    base={base}
+                    styles={styles}
+                    renderCard={renderCard}
+                    onCardPress={onCardPress}
+                  />
+                );
+              }
+              const isEnd = item.type === 'end';
               return (
-                <CardItem
-                  key={keyOf(item.card.id)}
-                  card={item.card}
-                  column={column}
-                  index={item.index}
-                  hidden={item.hidden}
-                  theme={theme}
+                <Spacer
+                  key={isEnd ? 'spacer:end' : item.key}
+                  columnKey={columnKey}
+                  slot={item.slot}
+                  initiallyOpen={item.slot === sourceSlot}
+                  boxHeight={draggedHeight}
+                  gap={gap}
+                  end={isEnd}
                   base={base}
                   styles={styles}
-                  renderCard={renderCard}
-                  onCardPress={onCardPress}
                 />
               );
-            }
-            const isEnd = item.type === 'end';
-            return (
-              <Spacer
-                key={isEnd ? 'spacer:end' : item.key}
-                columnKey={columnKey}
-                slot={item.slot}
-                initiallyOpen={item.slot === sourceSlot}
-                boxHeight={draggedHeight}
-                gap={gap}
-                end={isEnd}
-                base={base}
-                styles={styles}
-              />
-            );
-          })
-        )}
-      </ScrollView>
+            })
+          )}
+        </ScrollView>
+      </View>
 
       {renderColumnFooter ? (
         <View style={[base.columnFooter, styles?.columnFooter]}>

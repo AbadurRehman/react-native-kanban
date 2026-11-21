@@ -31,6 +31,8 @@ export interface ColumnLayout {
   contentHeight: number;
   /** Card rects relative to the column's scroll content, keyed by `keyOf(id)`. */
   cards: Record<string, Rect>;
+  /** Card keys in data order. */
+  order: string[];
   /** The "No cards" drop zone, when the column is empty. */
   empty: Rect | null;
 }
@@ -70,33 +72,28 @@ export function findTargetColumn(
 }
 
 /**
- * A column's cards as they'd sit with the dragged card taken out, sorted top
- * to bottom. Uses the rects measured before the drag started, so the result
- * never depends on mid-drag animations.
- *
- * @param sourceRect the dragged card's rect when this is its own column;
- *   cards below it move up by `space` (its height plus the card gap).
+ * A column's cards as they'd sit with the dragged card taken out, top to
+ * bottom. Positions are stacked from the data order and measured heights
+ * (not measured positions: on web, onLayout only fires when a view's size
+ * changes, so positions go stale when cards above it move).
  */
 export function visibleCards(
-  cards: Readonly<Record<string, Rect>>,
+  column: Pick<ColumnLayout, 'cards' | 'order'>,
   draggedKey: string | null,
-  sourceRect: Rect | null,
-  space: number
+  gap: number
 ): Rect[] {
   'worklet';
   const result: Rect[] = [];
-  for (const key in cards) {
-    if (key === draggedKey) continue;
-    const card = cards[key]!;
-    const shift = sourceRect && card.y > sourceRect.y ? space : 0;
-    result.push({
-      x: card.x,
-      y: card.y - shift,
-      width: card.width,
-      height: card.height,
-    });
+  const first =
+    column.order.length > 0 ? column.cards[column.order[0]!] : undefined;
+  let y = first ? first.y : 0;
+  for (let i = 0; i < column.order.length; i++) {
+    const key = column.order[i]!;
+    const card = column.cards[key];
+    if (!card || key === draggedKey) continue;
+    result.push({ x: card.x, y, width: card.width, height: card.height });
+    y += card.height + gap;
   }
-  result.sort((a, b) => a.y - b.y);
   return result;
 }
 

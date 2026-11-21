@@ -16,6 +16,7 @@ const EMPTY_COLUMN: ColumnLayout = {
   scrollY: 0,
   contentHeight: 0,
   cards: {},
+  order: [],
   empty: null,
 };
 
@@ -31,6 +32,7 @@ export function patchColumnLayout(
       ...previous,
       ...patch,
       cards: previous.cards,
+      order: patch.order ?? previous.order,
       empty: patch.empty !== undefined ? patch.empty : previous.empty,
     };
     return all;
@@ -63,7 +65,11 @@ export function setCardLayout(
     if (column) {
       column.cards[cardKey] = rect;
     } else {
-      all[columnKey] = { ...EMPTY_COLUMN, cards: { [cardKey]: rect } };
+      all[columnKey] = {
+        ...EMPTY_COLUMN,
+        cards: { [cardKey]: rect },
+        order: [],
+      };
     }
     return all;
   });

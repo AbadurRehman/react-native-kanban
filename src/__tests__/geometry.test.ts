@@ -19,6 +19,7 @@ const column = (x: number, width = 280): ColumnLayout => ({
   scrollY: 0,
   contentHeight: 400,
   cards: {},
+  order: [],
   empty: null,
 });
 
@@ -55,35 +56,52 @@ describe('findTargetColumn', () => {
 });
 
 // Three cards with an 8pt gap: one (0–60), two (68–128), three (136–236).
-const cards = {
-  one: { x: 12, y: 0, width: 256, height: 60 },
-  two: { x: 12, y: 68, width: 256, height: 60 },
-  three: { x: 12, y: 136, width: 256, height: 100 },
+const column3 = {
+  order: ['one', 'two', 'three'],
+  cards: {
+    one: { x: 12, y: 0, width: 256, height: 60 },
+    two: { x: 12, y: 68, width: 256, height: 60 },
+    three: { x: 12, y: 136, width: 256, height: 100 },
+  },
 };
 
 describe('visibleCards', () => {
-  it('sorts cards top to bottom', () => {
-    const shuffled = { c: cards.three, a: cards.one, b: cards.two };
-    expect(visibleCards(shuffled, null, null, 0).map((c) => c.y)).toEqual([
+  it('stacks cards in data order using their heights', () => {
+    expect(visibleCards(column3, null, 8).map((c) => c.y)).toEqual([
       0, 68, 136,
     ]);
   });
 
-  it('removes the dragged card and closes its gap in its own column', () => {
-    // Dragging "two" (60 tall + 8 gap = 68 of space): "three" moves up 68.
-    const result = visibleCards(cards, 'two', cards.two, 68);
-    expect(result.map((c) => c.y)).toEqual([0, 68]);
+  it('closes the gap left by the dragged card', () => {
+    expect(visibleCards(column3, 'two', 8).map((c) => c.y)).toEqual([0, 68]);
   });
 
-  it('only removes the dragged card in other columns', () => {
-    expect(visibleCards(cards, 'two', null, 68).map((c) => c.y)).toEqual([
-      0, 136,
-    ]);
+  it('ignores stale measured positions (web only reports size changes)', () => {
+    const stale = {
+      order: ['two', 'three'],
+      cards: {
+        two: { x: 12, y: 68, width: 256, height: 60 }, // really at the top now
+        three: { x: 12, y: 136, width: 256, height: 100 },
+      },
+    };
+    // Starts from the first card's offset, then stacks heights.
+    expect(visibleCards(stale, null, 8).map((c) => c.y)).toEqual([68, 136]);
+    const fresh = {
+      ...stale,
+      cards: { ...stale.cards, two: { ...stale.cards.two, y: 0 } },
+    };
+    expect(visibleCards(fresh, null, 8).map((c) => c.y)).toEqual([0, 68]);
+  });
+
+  it('skips cards that have not been measured yet', () => {
+    expect(
+      visibleCards({ ...column3, order: ['one', 'new', 'two'] }, null, 8)
+    ).toHaveLength(2);
   });
 });
 
 describe('insertIndexAt', () => {
-  const sorted = visibleCards(cards, null, null, 0);
+  const sorted = visibleCards(column3, null, 8);
 
   it('counts cards whose midpoint is above the point', () => {
     expect(insertIndexAt(sorted, -10)).toBe(0);
@@ -99,7 +117,7 @@ describe('insertIndexAt', () => {
 });
 
 describe('slotPosition', () => {
-  const sorted = visibleCards(cards, null, null, 0);
+  const sorted = visibleCards(column3, null, 8);
   const fallback = { x: 12, y: 0 };
 
   it('lands on the card currently at the index', () => {
@@ -116,7 +134,7 @@ describe('slotPosition', () => {
   });
 
   it("matches the dragged card's own spot when dropped where it started", () => {
-    const withoutTwo = visibleCards(cards, 'two', cards.two, 68);
+    const withoutTwo = visibleCards(column3, 'two', 8);
     expect(slotPosition(withoutTwo, 1, 8, fallback)).toEqual({ x: 12, y: 68 });
   });
 });

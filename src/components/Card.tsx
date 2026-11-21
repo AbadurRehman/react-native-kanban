@@ -208,32 +208,36 @@ function CardItemImpl<
     <DefaultCard card={card} base={base} styles={styles} />
   );
 
+  // The outer view is measured (its parent is always the column's scroll
+  // content; a GestureDetector may add its own wrapper, e.g. on web) and is
+  // the one hidden while dragging. The inner view owns the gesture and stays
+  // mounted throughout the drag.
   return (
-    <GestureDetector gesture={pan}>
-      <Animated.View
-        ref={cardRef}
-        testID={`kanban-card-${card.id}`}
-        onLayout={handleLayout}
-        collapsable={false}
-        pointerEvents={hidden ? 'none' : 'auto'}
-        style={hidden ? cardStyles.hidden : undefined}
-      >
-        {onCardPress ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={card.title ?? String(card.id)}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-            onPress={handlePress}
-            style={({ pressed }) => (pressed ? base.pressed : undefined)}
-          >
-            {content}
-          </Pressable>
-        ) : (
-          content
-        )}
-      </Animated.View>
-    </GestureDetector>
+    <View
+      testID={`kanban-card-${card.id}`}
+      onLayout={handleLayout}
+      pointerEvents={hidden ? 'none' : 'auto'}
+      style={hidden ? cardStyles.hidden : undefined}
+    >
+      <GestureDetector gesture={pan}>
+        <Animated.View ref={cardRef} collapsable={false}>
+          {onCardPress ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={card.title ?? String(card.id)}
+              onPressIn={handlePressIn}
+              onPressOut={handlePressOut}
+              onPress={handlePress}
+              style={({ pressed }) => (pressed ? base.pressed : undefined)}
+            >
+              {content}
+            </Pressable>
+          ) : (
+            content
+          )}
+        </Animated.View>
+      </GestureDetector>
+    </View>
   );
 }
 
