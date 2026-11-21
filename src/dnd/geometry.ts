@@ -37,6 +37,11 @@ export interface ColumnLayout {
   contentTop: number;
   /** The "No cards" drop zone, when the column is empty. */
   empty: Rect | null;
+  /**
+   * Height assumed for cards that haven't been measured yet (never rendered,
+   * because the column only renders the cards near its viewport).
+   */
+  estimate: number;
 }
 
 /** Stable string key for an id, so 1 and '1' never collide. */
@@ -148,21 +153,83 @@ export function visibleRange(
  * was in progress gets no further layout event once it settles).
  */
 export function visibleCards(
-  column: Pick<ColumnLayout, 'cards' | 'order' | 'contentTop'>,
+  column: Pick<ColumnLayout, 'cards' | 'order' | 'contentTop' | 'estimate'>,
   draggedKey: string | null,
-  gap: number
+  gap: number,
+  inset = 0
 ): Rect[] {
   'worklet';
   const result: Rect[] = [];
   let y = column.contentTop;
   for (let i = 0; i < column.order.length; i++) {
     const key = column.order[i]!;
-    const card = column.cards[key];
-    if (!card || key === draggedKey) continue;
+    if (key === draggedKey) continue;
+    // Cards that were never rendered count at the estimated height, like
+    // the column's spacing for them.
+    const card = column.cards[key] ?? {
+      x: inset,
+      y: 0,
+      width: 0,
+      height: column.estimate,
+    };
     result.push({ x: card.x, y, width: card.width, height: card.height });
     y += card.height + gap;
   }
   return result;
+}
+
+export interface CardWindow {
+  /** Indices of the first and last card to render (`last < first`: none). */
+  first: number;
+  last: number;
+  /** Room the cards above and below the window take, each with its gap. */
+  before: number;
+  after: number;
+}
+
+/**
+ * Which of a column's cards to render: the ones within `overscan` points of
+ * its viewport, scrolled to `scrollY`. Cards are stacked from `contentTop`,
+ * `gap` apart; `heights[i]` is card i's height, or null for a card that is
+ * out of the flow (the dragged card, drawn elsewhere).
+ */
+export function cardWindow(
+  heights: readonly (number | null)[],
+  gap: number,
+  contentTop: number,
+  scrollY: number,
+  viewportHeight: number,
+  overscan: number
+): CardWindow {
+  'worklet';
+  const top = scrollY - overscan;
+  const bottom = scrollY + viewportHeight + overscan;
+  let y = contentTop;
+  let first = -1;
+  let last = -1;
+  let lastAbove = -1;
+  let before = 0;
+  let after = 0;
+  for (let i = 0; i < heights.length; i++) {
+    const height = heights[i];
+    if (height === null || height === undefined) continue;
+    const cardTop = y;
+    y += height + gap;
+    if (cardTop + height <= top) {
+      before += height + gap;
+      lastAbove = i;
+    } else if (cardTop >= bottom) {
+      after += height + gap;
+    } else {
+      if (first < 0) first = i;
+      last = i;
+    }
+  }
+  if (first < 0) {
+    first = lastAbove + 1;
+    last = lastAbove;
+  }
+  return { first, last, before, after };
 }
 
 /**
@@ -269,18 +336,30 @@ export type ColumnItem<TCard> =
 export function buildColumnItems<TCard extends { id: KanbanId }>(
   cards: readonly TCard[],
   dragging: boolean,
-  hiddenCardId: KanbanId | undefined
+  hiddenCardId: KanbanId | undefined,
+  range?: { first: number; last: number }
 ): ColumnItem<TCard>[] {
   const items: ColumnItem<TCard>[] = [];
+  const isHidden = (card: TCard) =>
+    hiddenCardId !== undefined && card.id === hiddenCardId;
   let slot = 0;
+  let lastInFlow = -1;
   cards.forEach((card, index) => {
-    const hidden = hiddenCardId !== undefined && card.id === hiddenCardId;
-    if (dragging && !hidden) {
-      items.push({ type: 'spacer', key: `spacer:${keyOf(card.id)}`, slot });
+    const hidden = isHidden(card);
+    if (!hidden) lastInFlow = index;
+    // Only the window is rendered, but the dragged card always stays mounted.
+    const inWindow = !range || (index >= range.first && index <= range.last);
+    if (inWindow || hidden) {
+      if (dragging && !hidden) {
+        items.push({ type: 'spacer', key: `spacer:${keyOf(card.id)}`, slot });
+      }
+      items.push({ type: 'card', card, index, hidden });
     }
-    items.push({ type: 'card', card, index, hidden });
     if (!hidden) slot++;
   });
-  if (dragging && cards.length > 0) items.push({ type: 'end', slot });
+  const reachesEnd = !range || range.last >= lastInFlow;
+  if (dragging && cards.length > 0 && reachesEnd) {
+    items.push({ type: 'end', slot });
+  }
   return items;
 }

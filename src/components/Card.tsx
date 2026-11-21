@@ -19,7 +19,7 @@ import { useDragContext } from '../dnd/DragContext';
 import { reportDragError } from '../dnd/debug';
 import { dropPosition, moveOverlay, updateDragTarget } from '../dnd/engine';
 import { keyOf, type Rect } from '../dnd/geometry';
-import { removeCardLayout, setCardLayout } from '../dnd/registry';
+import { setCardLayout } from '../dnd/registry';
 import type { KanbanTheme } from '../theme/types';
 import type { KanbanCard, KanbanColumn } from '../types';
 import type { KanbanBaseStyles } from './createBaseStyles';
@@ -69,6 +69,8 @@ interface CardItemProps<
   styles: KanbanStyles | undefined;
   renderCard: BoardBaseProps<TCard, TColumn>['renderCard'];
   onCardPress: BoardBaseProps<TCard, TColumn>['onCardPress'];
+  /** Reports the card's measured height (the column windows its cards). */
+  onHeight?: (cardKey: string, height: number) => void;
 }
 
 function CardItemImpl<
@@ -85,6 +87,7 @@ function CardItemImpl<
   styles,
   renderCard,
   onCardPress,
+  onHeight,
 }: CardItemProps<TCard, TColumn>) {
   const { shared, actions, enabled, activationDelay, dragCount } =
     useDragContext();
@@ -100,16 +103,17 @@ function CardItemImpl<
       const { x, y, width, height } = event.nativeEvent.layout;
       lastRect.current = { x, y, width, height };
       setCardLayout(layouts, active, columnKey, cardKey, lastRect.current);
+      onHeight?.(cardKey, height);
     },
-    [layouts, active, columnKey, cardKey]
+    [layouts, active, columnKey, cardKey, onHeight]
   );
-  // Re-register when the effect re-runs (Fast Refresh, StrictMode): the
-  // cleanup removed this card and onLayout won't fire again for it.
+  // Re-register when the effect re-runs (Fast Refresh, StrictMode, a new
+  // registry): onLayout won't fire again for an unchanged card. Sizes stay
+  // registered after unmount; the column forgets cards that leave it.
   useEffect(() => {
     if (lastRect.current) {
       setCardLayout(layouts, active, columnKey, cardKey, lastRect.current);
     }
-    return () => removeCardLayout(layouts, active, columnKey, cardKey);
   }, [layouts, active, columnKey, cardKey]);
 
   const pan = useMemo(() => {

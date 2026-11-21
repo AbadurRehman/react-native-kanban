@@ -238,6 +238,18 @@ export interface BoardBaseProps<
    */
   onCardDragEnd?: (event: CardDragEndEvent<TCard>) => void;
 
+  /**
+   * Render only the cards near each column's viewport (about a screen above
+   * and below), so large boards mount and drag quickly. `true` by default;
+   * `false` keeps every card mounted.
+   */
+  virtualize?: boolean;
+  /**
+   * Height assumed for cards that haven't been rendered yet, for scroll size
+   * and drop positions. Defaults to the average of the measured cards.
+   */
+  estimatedCardHeight?: number;
+
   /** Turn off dragging columns by their header. */
   disableColumnDrag?: boolean;
   /**
