@@ -17,6 +17,7 @@ const EMPTY_COLUMN: ColumnLayout = {
   contentHeight: 0,
   cards: {},
   order: [],
+  contentTop: 0,
   empty: null,
 };
 
@@ -47,20 +48,15 @@ export function removeColumnLayout(layouts: Layouts, columnKey: string) {
   });
 }
 
-/**
- * Records a card's rect. Ignored while a drag is active: hit tests use the
- * positions from before the lift, not the ones moving under animation.
- */
+/** Records a card's rect (hit tests use its size; positions are stacked). */
 export function setCardLayout(
   layouts: Layouts,
-  active: SharedValue<boolean>,
   columnKey: string,
   cardKey: string,
   rect: Rect
 ) {
   layouts.modify((all) => {
     'worklet';
-    if (active.value) return all;
     const column = all[columnKey];
     if (column) {
       column.cards[cardKey] = rect;
@@ -77,13 +73,11 @@ export function setCardLayout(
 
 export function removeCardLayout(
   layouts: Layouts,
-  active: SharedValue<boolean>,
   columnKey: string,
   cardKey: string
 ) {
   layouts.modify((all) => {
     'worklet';
-    if (active.value) return all;
     const column = all[columnKey];
     if (column) delete column.cards[cardKey];
     return all;

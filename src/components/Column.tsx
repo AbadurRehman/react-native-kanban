@@ -149,6 +149,17 @@ function ColumnImpl<
   useEffect(() => {
     patchColumnLayout(layouts, columnKey, { order: cardOrder });
   }, [layouts, columnKey, cardOrder]);
+  // Where the first card starts inside the scroll content (custom top padding).
+  const contentTop = useMemo(() => {
+    const content =
+      StyleSheet.flatten([base.columnContent, styles?.columnContent]) ?? {};
+    const top =
+      content.paddingTop ?? content.paddingVertical ?? content.padding;
+    return typeof top === 'number' ? top : 0;
+  }, [base.columnContent, styles?.columnContent]);
+  useEffect(() => {
+    patchColumnLayout(layouts, columnKey, { contentTop });
+  }, [layouts, columnKey, contentTop]);
 
   // Auto-scroll this column while a card hovers near its top or bottom edge.
   const autoScroll = useFrameCallback((frame) => {
