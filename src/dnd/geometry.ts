@@ -46,13 +46,17 @@ export function keyOf(id: KanbanId): string {
 }
 
 /**
- * The column under `contentX`, or the nearest one when the finger is in a gap
- * or past either end of the board.
+ * The column under `contentX` (board content coordinates), or the nearest one
+ * when it's in a gap or past an edge. Column `i` starts at `start + i * step`:
+ * positions come from the column order, not from measurements, which go stale
+ * after a reorder (web only reports size changes).
  */
 export function findTargetColumn(
   order: readonly string[],
   columns: Readonly<Record<string, ColumnLayout>>,
-  contentX: number
+  contentX: number,
+  start: number,
+  step: number
 ): string | null {
   'worklet';
   let nearest: string | null = null;
@@ -61,8 +65,8 @@ export function findTargetColumn(
     const key = order[i]!;
     const column = columns[key];
     if (!column || column.width <= 0) continue;
-    const left = column.x;
-    const right = column.x + column.width;
+    const left = start + i * step;
+    const right = left + column.width;
     if (contentX >= left && contentX <= right) return key;
     const distance = contentX < left ? left - contentX : contentX - right;
     if (distance < nearestDistance) {
@@ -71,6 +75,69 @@ export function findTargetColumn(
     }
   }
   return nearest;
+}
+
+/** Left edge of a column in board content coordinates (see findTargetColumn). */
+export function columnLeft(
+  order: readonly string[],
+  key: string,
+  start: number,
+  step: number
+): number {
+  'worklet';
+  const index = order.indexOf(key);
+  return start + (index < 0 ? 0 : index) * step;
+}
+
+/**
+ * Where a dragged column lands: how many of the other `count` columns (laid
+ * out from `start`, `step` apart, `width` wide) sit left of its center.
+ * Like insertIndexAt, columns from the current landing spot on are compared
+ * shifted right by `space`, so the spot only moves once the center passes a
+ * neighbour's visible midpoint.
+ */
+export function columnInsertIndex(
+  count: number,
+  start: number,
+  step: number,
+  width: number,
+  centerX: number,
+  currentIndex = -1,
+  space = 0
+): number {
+  'worklet';
+  let index = 0;
+  for (let i = 0; i < count; i++) {
+    const shift = currentIndex >= 0 && i >= currentIndex ? space : 0;
+    if (start + i * step + shift + width / 2 < centerX) index++;
+  }
+  return index;
+}
+
+/**
+ * The cards of `rects` (stacked, top to bottom) visible in a viewport scrolled
+ * to `scrollY`, and where the first one starts relative to the viewport top.
+ */
+export function visibleRange(
+  rects: readonly Rect[],
+  scrollY: number,
+  viewportHeight: number
+): { first: number; last: number; offset: number } {
+  'worklet';
+  let first = -1;
+  let last = -1;
+  for (let i = 0; i < rects.length; i++) {
+    const rect = rects[i]!;
+    if (rect.y + rect.height <= scrollY) continue;
+    if (rect.y >= scrollY + viewportHeight) break;
+    if (first < 0) first = i;
+    last = i;
+  }
+  return {
+    first,
+    last,
+    offset: first < 0 ? 0 : rects[first]!.y - scrollY,
+  };
 }
 
 /**

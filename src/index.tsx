@@ -9,6 +9,8 @@ export type {
   CardDragStartEvent,
   CardDropCheck,
   CardRenderInfo,
+  ColumnDragEndEvent,
+  ColumnDragStartEvent,
   ColumnRenderInfo,
   KanbanAutoScroll,
   KanbanDragStyle,

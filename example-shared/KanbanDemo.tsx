@@ -14,11 +14,14 @@ import {
   addCard,
   createKanbanTheme,
   moveCard,
+  moveColumn,
   useKanbanTheme,
   type CardDragEndEvent,
   type CardDragStartEvent,
   type CardDropCheck,
   type CardRenderInfo,
+  type ColumnDragEndEvent,
+  type ColumnDragStartEvent,
   type KanbanAutoScroll,
   type KanbanColorScheme,
   type KanbanColumn,
@@ -39,6 +42,7 @@ type WidthMode = 'fixed' | 'fullScreen';
 type CardMode = 'custom' | 'default';
 type HeightMode = 'content' | 'fill';
 type DragMode = 'on' | 'off';
+type ColumnDragMode = 'on' | 'off';
 type LiftMode = 'subtle' | 'default' | 'bold';
 type PreviewMode = 'card' | 'compact';
 type LandingMode = 'dashed' | 'tinted';
@@ -71,6 +75,7 @@ const canDropTask = ({
   toColumn,
 }: CardDropCheck<Task, KanbanColumn<Task>>) =>
   toColumn.id !== 'review' || fromColumn.id === 'doing';
+const canDragList = (column: KanbanColumn<Task>) => column.id !== 'done';
 
 const PRIORITY_COLORS: Record<Task['priority'], string> = {
   high: '#EF4444',
@@ -103,8 +108,11 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
   const [delayMode, setDelayMode] = useState<DelayMode>('300ms');
   const [scrollMode, setScrollMode] = useState<ScrollMode>('normal');
   const [rulesMode, setRulesMode] = useState<RulesMode>('off');
+  const [columnDragMode, setColumnDragMode] = useState<ColumnDragMode>('on');
   const [board, setBoard] = useState(initialBoard);
-  const [lastEvent, setLastEvent] = useState('Long-press a card to drag it.');
+  const [lastEvent, setLastEvent] = useState(
+    'Long-press a card or a column header to drag it.'
+  );
   const nextId = useRef(1);
 
   // Same theme the board resolves, so the demo chrome matches it.
@@ -145,6 +153,30 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
       );
     },
     [columnTitle]
+  );
+
+  const handleColumnDragStart = useCallback(
+    ({ column }: ColumnDragStartEvent<KanbanColumn<Task>>) => {
+      setLastEvent(`Lifted the “${column.title}” column`);
+    },
+    []
+  );
+
+  // Columns move the same way: apply each drop with moveColumn.
+  const handleColumnDragEnd = useCallback(
+    ({
+      column,
+      source,
+      destination,
+    }: ColumnDragEndEvent<KanbanColumn<Task>>) => {
+      setBoard((current) => moveColumn(current, source, destination));
+      setLastEvent(
+        source.fromPosition === destination.toPosition
+          ? `Put the “${column.title}” column back`
+          : `Moved the “${column.title}” column to position ${destination.toPosition + 1}`
+      );
+    },
+    []
   );
 
   const handleCardPress = useCallback((card: Task) => {
@@ -190,7 +222,7 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
       <View style={[styles.header, { paddingTop: TOP_INSET }]}>
         <View style={styles.headerText}>
           <Text style={chrome.title}>react-native-kanban</Text>
-          <Text style={chrome.subtitle}>v0.3 demo · {platformLabel}</Text>
+          <Text style={chrome.subtitle}>v0.4 demo · {platformLabel}</Text>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -312,6 +344,13 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
               theme={theme}
             />
             <Segmented
+              label="Columns"
+              value={columnDragMode}
+              options={['on', 'off']}
+              onChange={setColumnDragMode}
+              theme={theme}
+            />
+            <Segmented
               label="Rules"
               value={rulesMode}
               options={['off', 'on']}
@@ -321,7 +360,7 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
           </ScrollView>
           {rulesMode === 'on' ? (
             <Text style={chrome.hint}>
-              Cards in Done are locked. Review only takes cards from In
+              Done and its cards are locked. Review only takes cards from In
               progress.
             </Text>
           ) : null}
@@ -355,6 +394,10 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
         autoScroll={AUTO_SCROLL[scrollMode]}
         canDragCard={rulesMode === 'on' ? canDragTask : undefined}
         canDropCard={rulesMode === 'on' ? canDropTask : undefined}
+        disableColumnDrag={columnDragMode === 'off'}
+        canDragColumn={rulesMode === 'on' ? canDragList : undefined}
+        onColumnDragStart={handleColumnDragStart}
+        onColumnDragEnd={handleColumnDragEnd}
       />
     </View>
   );

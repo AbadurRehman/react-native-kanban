@@ -3,11 +3,14 @@ import {
   autoScrollSpeed,
   buildColumnItems,
   clampScroll,
+  columnInsertIndex,
+  columnLeft,
   findTargetColumn,
   insertIndexAt,
   keyOf,
   slotPosition,
   visibleCards,
+  visibleRange,
   type ColumnLayout,
 } from '../dnd/geometry';
 
@@ -35,24 +38,36 @@ describe('findTargetColumn', () => {
   const columns = { a: column(16), b: column(308), c: column(600) };
   const order = ['a', 'b', 'c'];
 
+  // Columns start at 16 and are 292 apart (280 wide + 12 gap).
+  const find = (
+    x: number,
+    keys: string[] = order,
+    layouts: Record<string, ColumnLayout> = columns
+  ) => findTargetColumn(keys, layouts, x, 16, 292);
+
   it('returns the column under the finger', () => {
-    expect(findTargetColumn(order, columns, 20)).toBe('a');
-    expect(findTargetColumn(order, columns, 400)).toBe('b');
-    expect(findTargetColumn(order, columns, 879)).toBe('c');
+    expect(find(20)).toBe('a');
+    expect(find(400)).toBe('b');
+    expect(find(879)).toBe('c');
   });
 
   it('picks the nearest column in gaps and past the edges', () => {
-    expect(findTargetColumn(order, columns, 298)).toBe('a'); // 2pt from a, 10pt from b
-    expect(findTargetColumn(order, columns, 305)).toBe('b');
-    expect(findTargetColumn(order, columns, 0)).toBe('a');
-    expect(findTargetColumn(order, columns, 5000)).toBe('c');
+    expect(find(298)).toBe('a'); // 2pt from a, 10pt from b
+    expect(find(305)).toBe('b');
+    expect(find(0)).toBe('a');
+    expect(find(5000)).toBe('c');
+  });
+
+  it('places columns by order, not by their measured x', () => {
+    // Measured positions from before a reorder: c was first, a last.
+    const stale = { a: column(600), b: column(308), c: column(16) };
+    expect(find(20, ['a', 'b', 'c'], stale)).toBe('a');
+    expect(find(700, ['a', 'b', 'c'], stale)).toBe('c');
   });
 
   it('ignores unmeasured columns and handles empty boards', () => {
-    expect(
-      findTargetColumn(['x', 'a'], { x: column(0, 0), a: column(300) }, 10)
-    ).toBe('a');
-    expect(findTargetColumn([], {}, 10)).toBeNull();
+    expect(find(10, ['x', 'a'], { x: column(0, 0), a: column(300) })).toBe('a');
+    expect(find(10, [], {})).toBeNull();
   });
 });
 
@@ -247,5 +262,62 @@ describe('buildColumnItems', () => {
 
   it('adds nothing to empty columns', () => {
     expect(buildColumnItems([], true, undefined)).toEqual([]);
+  });
+});
+
+describe('columnLeft', () => {
+  it('stacks columns from the start by their order', () => {
+    expect(columnLeft(['a', 'b', 'c'], 'c', 16, 292)).toBe(600);
+    expect(columnLeft(['a', 'b', 'c'], 'missing', 16, 292)).toBe(16);
+  });
+});
+
+describe('columnInsertIndex', () => {
+  // Two other columns at 16 and 308, 280 wide (midpoints 156 and 448).
+  const index = (centerX: number, current = -1) =>
+    columnInsertIndex(2, 16, 292, 280, centerX, current, 292);
+
+  it('counts the columns left of the dragged center', () => {
+    expect(index(100)).toBe(0);
+    expect(index(200)).toBe(1);
+    expect(index(500)).toBe(2);
+  });
+
+  it('keeps the landing spot until the center passes a midpoint', () => {
+    // Spot at 0 shifts both columns right by 292 (midpoints 448 and 740).
+    expect(index(200, 0)).toBe(0);
+    expect(index(460, 0)).toBe(1);
+    // Spot at 2 leaves them in place: moving back past 448 goes to 1.
+    expect(index(440, 2)).toBe(1);
+  });
+});
+
+describe('visibleRange', () => {
+  const rects = [
+    { x: 0, y: 0, width: 100, height: 60 },
+    { x: 0, y: 68, width: 100, height: 60 },
+    { x: 0, y: 136, width: 100, height: 100 },
+    { x: 0, y: 244, width: 100, height: 60 },
+  ];
+
+  it("returns the cards in the viewport and the first one's offset", () => {
+    expect(visibleRange(rects, 0, 130)).toEqual({
+      first: 0,
+      last: 1,
+      offset: 0,
+    });
+    expect(visibleRange(rects, 100, 100)).toEqual({
+      first: 1,
+      last: 2,
+      offset: -32,
+    });
+  });
+
+  it('is empty for an empty column', () => {
+    expect(visibleRange([], 0, 300)).toEqual({
+      first: -1,
+      last: -1,
+      offset: 0,
+    });
   });
 });
