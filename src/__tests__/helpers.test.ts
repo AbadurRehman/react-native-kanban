@@ -142,7 +142,11 @@ describe('moveCard', () => {
 
 describe('moveColumn', () => {
   it('moves a column to a new index', () => {
-    const next = moveColumn(makeBoard(), { fromPosition: 0 }, { toPosition: 2 });
+    const next = moveColumn(
+      makeBoard(),
+      { fromPosition: 0 },
+      { toPosition: 2 }
+    );
     expect(next.columns.map((column) => column.id)).toEqual([
       'doing',
       'done',
@@ -152,8 +156,12 @@ describe('moveColumn', () => {
 
   it('returns the same board for no-ops and invalid input', () => {
     const board = makeBoard();
-    expect(moveColumn(board, { fromPosition: 1 }, { toPosition: 1 })).toBe(board);
-    expect(moveColumn(board, { fromPosition: 7 }, { toPosition: 0 })).toBe(board);
+    expect(moveColumn(board, { fromPosition: 1 }, { toPosition: 1 })).toBe(
+      board
+    );
+    expect(moveColumn(board, { fromPosition: 7 }, { toPosition: 0 })).toBe(
+      board
+    );
   });
 });
 
@@ -191,7 +199,11 @@ describe('removeCard', () => {
 describe('updateCard', () => {
   it('merges a partial update', () => {
     const next = updateCard(makeBoard(), 4, { title: 'D2', points: 3 });
-    expect(next.columns[1]!.cards[0]).toEqual({ id: 4, title: 'D2', points: 3 });
+    expect(next.columns[1]!.cards[0]).toEqual({
+      id: 4,
+      title: 'D2',
+      points: 3,
+    });
   });
 
   it('accepts an updater function and never changes the id', () => {
@@ -214,7 +226,11 @@ describe('columns', () => {
   it('adds a column at the end by default, or at a position', () => {
     const end = addColumn(makeBoard(), { id: 'qa', cards: [] });
     expect(end.columns.at(-1)!.id).toBe('qa');
-    const top = addColumn(makeBoard(), { id: 'qa', cards: [] }, { position: 'top' });
+    const top = addColumn(
+      makeBoard(),
+      { id: 'qa', cards: [] },
+      { position: 'top' }
+    );
     expect(top.columns[0]!.id).toBe('qa');
   });
 
@@ -225,7 +241,11 @@ describe('columns', () => {
 
   it('updates a column with a partial or a function', () => {
     const renamed = updateColumn(makeBoard(), 'done', { title: 'Shipped' });
-    expect(renamed.columns[2]).toMatchObject({ id: 'done', title: 'Shipped', wipLimit: 5 });
+    expect(renamed.columns[2]).toMatchObject({
+      id: 'done',
+      title: 'Shipped',
+      wipLimit: 5,
+    });
     const limited = updateColumn(makeBoard(), 'done', (column) => ({
       ...column,
       wipLimit: (column.wipLimit ?? 0) + 1,
