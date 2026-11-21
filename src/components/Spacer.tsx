@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   useAnimatedReaction,
@@ -24,6 +25,8 @@ interface SpacerProps {
   end?: boolean;
   base: KanbanBaseStyles;
   styles: KanbanStyles | undefined;
+  /** Custom landing spot (`renderPlaceholder`); replaces the dashed box. */
+  children?: ReactNode;
 }
 
 /**
@@ -43,6 +46,7 @@ export function Spacer({
   end = false,
   base,
   styles,
+  children,
 }: SpacerProps) {
   const { shared } = useDragContext();
   const { targetKey, targetIndex, space } = shared;
@@ -76,14 +80,23 @@ export function Spacer({
         animatedStyle,
       ]}
     >
-      <View
-        style={[
-          base.placeholder,
-          { height: boxHeight },
-          end ? { marginTop: gap } : null,
-          styles?.placeholder,
-        ]}
-      />
+      {children ? (
+        <View
+          testID="kanban-placeholder-custom"
+          style={[{ height: boxHeight }, end ? { marginTop: gap } : null]}
+        >
+          {children}
+        </View>
+      ) : (
+        <View
+          style={[
+            base.placeholder,
+            { height: boxHeight },
+            end ? { marginTop: gap } : null,
+            styles?.placeholder,
+          ]}
+        />
+      )}
     </Animated.View>
   );
 }

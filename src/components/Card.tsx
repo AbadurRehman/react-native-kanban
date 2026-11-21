@@ -14,7 +14,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { DROP_MS, LONG_PRESS_MS } from '../dnd/constants';
+import { DROP_MS } from '../dnd/constants';
 import { useDragContext } from '../dnd/DragContext';
 import { reportDragError } from '../dnd/debug';
 import { dropPosition, moveOverlay, updateDragTarget } from '../dnd/engine';
@@ -62,6 +62,8 @@ interface CardItemProps<
    * running) but leaves the layout and turns invisible.
    */
   hidden: boolean;
+  /** `canDragCard` allows this card to be dragged. */
+  draggable: boolean;
   theme: KanbanTheme;
   base: KanbanBaseStyles;
   styles: KanbanStyles | undefined;
@@ -77,13 +79,15 @@ function CardItemImpl<
   column,
   index,
   hidden,
+  draggable,
   theme,
   base,
   styles,
   renderCard,
   onCardPress,
 }: CardItemProps<TCard, TColumn>) {
-  const { shared, actions, enabled, dragCount } = useDragContext();
+  const { shared, actions, enabled, activationDelay, dragCount } =
+    useDragContext();
   const cardRef = useAnimatedRef<Animated.View>();
   const cardKey = keyOf(card.id);
   const columnKey = keyOf(column.id);
@@ -110,10 +114,16 @@ function CardItemImpl<
 
   const pan = useMemo(() => {
     const s = shared;
-    return Gesture.Pan()
+    const gesture = Gesture.Pan()
       .withTestId(`kanban-card-drag-${String(card.id)}`)
-      .enabled(enabled)
-      .activateAfterLongPress(LONG_PRESS_MS)
+      .enabled(enabled && draggable);
+    // A long press lifts the card; with no delay, the first movement does
+    // (the gesture then wins over the column's scroll).
+    const activated =
+      activationDelay > 0
+        ? gesture.activateAfterLongPress(activationDelay)
+        : gesture.minDistance(4);
+    return activated
       .onStart((event) => {
         'worklet';
         try {
@@ -132,6 +142,8 @@ function CardItemImpl<
           s.overlayY.value = cardBox.pageY - boardBox.pageY;
           s.draggedKey.value = cardKey;
           s.sourceKey.value = columnKey;
+          s.sourceIndex.value = index;
+          s.dropBlocked.value = {};
           s.draggedRect.value = s.layouts.value[columnKey]?.cards[cardKey] ?? {
             x: s.cardInset.value,
             y: 0,
@@ -194,7 +206,18 @@ function CardItemImpl<
           runOnJS(actions.finish)(); // never leave a drag hanging
         }
       });
-  }, [shared, actions, enabled, cardRef, card.id, cardKey, columnKey, index]);
+  }, [
+    shared,
+    actions,
+    enabled,
+    draggable,
+    activationDelay,
+    cardRef,
+    card.id,
+    cardKey,
+    columnKey,
+    index,
+  ]);
 
   // Releasing a drag also ends the press: ignore presses that turned into a
   // drag. Presses without a press-in (screen reader activation) always count.
