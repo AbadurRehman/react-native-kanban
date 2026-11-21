@@ -145,6 +145,18 @@ function CardItemImpl<
           s.debugFrames.value = 0;
           s.debugMapper.value = 0;
           s.debugError.value = null;
+          s.debugTouches.value = 0;
+          s.debugRaf.value = 0;
+          s.debugEnd.value = '';
+          s.debugStart.value = Date.now();
+          // Probe: count raw UI frames while this drag is active.
+          const tick = () => {
+            'worklet';
+            if (!s.active.value) return;
+            s.debugRaf.value += 1;
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
           s.active.value = true;
           s.lift.value = withSpring(1, { damping: 18, stiffness: 260 });
           runOnJS(actions.start)(
@@ -171,8 +183,17 @@ function CardItemImpl<
           reportDragError(s, 'drag update', error);
         }
       })
-      .onFinalize(() => {
+      .onTouchesMove(() => {
         'worklet';
+        if (s.draggedKey.value === cardKey) s.debugTouches.value += 1;
+      })
+      .onFinalize((_event, success) => {
+        'worklet';
+        if (s.draggedKey.value === cardKey && s.debugEnd.value === '') {
+          s.debugEnd.value = `${Date.now() - s.debugStart.value}ms ${
+            success ? 'ended' : 'cancelled'
+          }${s.dropping.value ? ' (already dropping)' : ''}`;
+        }
         if (!s.active.value || s.dropping.value) return;
         if (s.draggedKey.value !== cardKey) return;
         s.dropping.value = true;

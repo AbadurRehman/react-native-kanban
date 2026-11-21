@@ -184,6 +184,10 @@ export function Board<
   const debugFrames = useSharedValue(0);
   const debugMapper = useSharedValue(0);
   const debugError = useSharedValue<string | null>(null);
+  const debugTouches = useSharedValue(0);
+  const debugRaf = useSharedValue(0);
+  const debugStart = useSharedValue(0);
+  const debugEnd = useSharedValue('');
   useEffect(() => {
     cardGap.value = theme.spacing.cardGap;
     cardInset.value = theme.spacing.columnPadding;
@@ -220,6 +224,10 @@ export function Board<
       debugFrames,
       debugMapper,
       debugError,
+      debugTouches,
+      debugRaf,
+      debugStart,
+      debugEnd,
     }),
     [
       boardRef,
@@ -251,6 +259,10 @@ export function Board<
       debugFrames,
       debugMapper,
       debugError,
+      debugTouches,
+      debugRaf,
+      debugStart,
+      debugEnd,
     ]
   );
 
