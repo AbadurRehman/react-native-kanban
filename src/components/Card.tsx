@@ -149,14 +149,6 @@ function CardItemImpl<
           s.debugRaf.value = 0;
           s.debugEnd.value = '';
           s.debugStart.value = Date.now();
-          // Probe: count raw UI frames while this drag is active.
-          const tick = () => {
-            'worklet';
-            if (!s.active.value) return;
-            s.debugRaf.value += 1;
-            requestAnimationFrame(tick);
-          };
-          requestAnimationFrame(tick);
           s.active.value = true;
           s.lift.value = withSpring(1, { damping: 18, stiffness: 260 });
           runOnJS(actions.start)(
