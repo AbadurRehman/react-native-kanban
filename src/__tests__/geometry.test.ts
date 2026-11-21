@@ -3,9 +3,11 @@ import {
   autoScrollSpeed,
   buildColumnItems,
   clampScroll,
-  findInsertIndex,
   findTargetColumn,
+  insertIndexAt,
   keyOf,
+  slotPosition,
+  visibleCards,
   type ColumnLayout,
 } from '../dnd/geometry';
 
@@ -17,6 +19,7 @@ const column = (x: number, width = 280): ColumnLayout => ({
   scrollY: 0,
   contentHeight: 400,
   cards: {},
+  empty: null,
 });
 
 describe('keyOf', () => {
@@ -51,28 +54,70 @@ describe('findTargetColumn', () => {
   });
 });
 
-describe('findInsertIndex', () => {
-  const cards = {
-    one: { x: 12, y: 0, width: 256, height: 60 },
-    two: { x: 12, y: 68, width: 256, height: 60 },
-    three: { x: 12, y: 136, width: 256, height: 100 },
-  };
+// Three cards with an 8pt gap: one (0–60), two (68–128), three (136–236).
+const cards = {
+  one: { x: 12, y: 0, width: 256, height: 60 },
+  two: { x: 12, y: 68, width: 256, height: 60 },
+  three: { x: 12, y: 136, width: 256, height: 100 },
+};
 
-  it('counts cards whose midpoint is above the finger', () => {
-    expect(findInsertIndex(cards, -10, null)).toBe(0);
-    expect(findInsertIndex(cards, 29, null)).toBe(0);
-    expect(findInsertIndex(cards, 31, null)).toBe(1);
-    expect(findInsertIndex(cards, 100, null)).toBe(2);
-    expect(findInsertIndex(cards, 187, null)).toBe(3);
+describe('visibleCards', () => {
+  it('sorts cards top to bottom', () => {
+    const shuffled = { c: cards.three, a: cards.one, b: cards.two };
+    expect(visibleCards(shuffled, null, null, 0).map((c) => c.y)).toEqual([
+      0, 68, 136,
+    ]);
   });
 
-  it('ignores the dragged card', () => {
-    expect(findInsertIndex(cards, 187, 'two')).toBe(2);
-    expect(findInsertIndex(cards, 31, 'one')).toBe(0);
+  it('removes the dragged card and closes its gap in its own column', () => {
+    // Dragging "two" (60 tall + 8 gap = 68 of space): "three" moves up 68.
+    const result = visibleCards(cards, 'two', cards.two, 68);
+    expect(result.map((c) => c.y)).toEqual([0, 68]);
+  });
+
+  it('only removes the dragged card in other columns', () => {
+    expect(visibleCards(cards, 'two', null, 68).map((c) => c.y)).toEqual([
+      0, 136,
+    ]);
+  });
+});
+
+describe('insertIndexAt', () => {
+  const sorted = visibleCards(cards, null, null, 0);
+
+  it('counts cards whose midpoint is above the point', () => {
+    expect(insertIndexAt(sorted, -10)).toBe(0);
+    expect(insertIndexAt(sorted, 29)).toBe(0);
+    expect(insertIndexAt(sorted, 31)).toBe(1);
+    expect(insertIndexAt(sorted, 100)).toBe(2);
+    expect(insertIndexAt(sorted, 187)).toBe(3);
   });
 
   it('returns 0 for an empty column', () => {
-    expect(findInsertIndex({}, 999, null)).toBe(0);
+    expect(insertIndexAt([], 999)).toBe(0);
+  });
+});
+
+describe('slotPosition', () => {
+  const sorted = visibleCards(cards, null, null, 0);
+  const fallback = { x: 12, y: 0 };
+
+  it('lands on the card currently at the index', () => {
+    expect(slotPosition(sorted, 0, 8, fallback)).toEqual({ x: 12, y: 0 });
+    expect(slotPosition(sorted, 2, 8, fallback)).toEqual({ x: 12, y: 136 });
+  });
+
+  it('lands below the last card at the end', () => {
+    expect(slotPosition(sorted, 3, 8, fallback)).toEqual({ x: 12, y: 244 });
+  });
+
+  it('uses the fallback in empty columns', () => {
+    expect(slotPosition([], 0, 8, { x: 20, y: 4 })).toEqual({ x: 20, y: 4 });
+  });
+
+  it("matches the dragged card's own spot when dropped where it started", () => {
+    const withoutTwo = visibleCards(cards, 'two', cards.two, 68);
+    expect(slotPosition(withoutTwo, 1, 8, fallback)).toEqual({ x: 12, y: 68 });
   });
 });
 
@@ -106,30 +151,56 @@ describe('clampScroll', () => {
 });
 
 describe('buildColumnItems', () => {
-  const cards = [{ id: 1 }, { id: 2 }, { id: 3 }];
+  const list = [{ id: 1 }, { id: 2 }, { id: 3 }];
+  const describeItems = (items: ReturnType<typeof buildColumnItems>) =>
+    items.map((item) =>
+      item.type === 'card'
+        ? `${item.hidden ? 'H' : 'C'}${String(item.card.id)}`
+        : item.type === 'spacer'
+          ? `S${item.slot}`
+          : `E${item.slot}`
+    );
 
-  it('renders cards unchanged when idle', () => {
-    expect(buildColumnItems(cards, undefined, undefined)).toEqual([
-      { type: 'card', card: cards[0], index: 0 },
-      { type: 'card', card: cards[1], index: 1 },
-      { type: 'card', card: cards[2], index: 2 },
+  it('renders only cards when idle', () => {
+    expect(describeItems(buildColumnItems(list, false, undefined))).toEqual([
+      'C1',
+      'C2',
+      'C3',
     ]);
   });
 
-  it('hides the dragged card and inserts the placeholder', () => {
-    const items = buildColumnItems(cards, 1, 1);
-    expect(
-      items.map((item) => (item.type === 'card' ? item.card.id : 'P'))
-    ).toEqual([2, 'P', 3]);
-    // Real indexes are kept for render props.
-    expect(items[0]).toMatchObject({ index: 1 });
+  it('adds a spacer before every card and one at the end while dragging', () => {
+    expect(describeItems(buildColumnItems(list, true, undefined))).toEqual([
+      'S0',
+      'C1',
+      'S1',
+      'C2',
+      'S2',
+      'C3',
+      'E3',
+    ]);
   });
 
-  it('clamps the placeholder and works in empty columns', () => {
-    expect(buildColumnItems([], undefined, 3)).toEqual([
-      { type: 'placeholder' },
+  it('keeps the dragged card in place, hidden, without its own spacer', () => {
+    expect(describeItems(buildColumnItems(list, true, 2))).toEqual([
+      'S0',
+      'C1',
+      'H2',
+      'S1',
+      'C3',
+      'E2',
     ]);
-    const end = buildColumnItems(cards, undefined, 99);
-    expect(end.at(-1)).toEqual({ type: 'placeholder' });
+  });
+
+  it('keeps real indexes for render props', () => {
+    const items = buildColumnItems(list, true, 1);
+    const third = items.find(
+      (item) => item.type === 'card' && item.card.id === 3
+    );
+    expect(third).toMatchObject({ index: 2 });
+  });
+
+  it('adds nothing to empty columns', () => {
+    expect(buildColumnItems([], true, undefined)).toEqual([]);
   });
 });

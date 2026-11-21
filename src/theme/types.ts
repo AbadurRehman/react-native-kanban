@@ -68,6 +68,8 @@ export interface KanbanThemeTypography {
 
 export interface KanbanThemeShadows {
   card: ViewStyle;
+  /** Shadow of the card while it's being dragged. */
+  cardDragging: ViewStyle;
 }
 
 /** A fully resolved theme, as returned by `useKanbanTheme()`. */

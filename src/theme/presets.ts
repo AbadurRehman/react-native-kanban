@@ -87,6 +87,10 @@ export const lightTheme: KanbanTheme = {
       boxShadow:
         '0px 1px 2px rgba(15, 23, 42, 0.08), 0px 1px 1px rgba(15, 23, 42, 0.04)',
     },
+    cardDragging: {
+      boxShadow:
+        '0px 12px 28px rgba(15, 23, 42, 0.18), 0px 2px 6px rgba(15, 23, 42, 0.10)',
+    },
   },
 };
 
@@ -96,5 +100,9 @@ export const darkTheme: KanbanTheme = {
   colors: darkColors,
   shadows: {
     card: { boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.45)' },
+    cardDragging: {
+      boxShadow:
+        '0px 12px 28px rgba(0, 0, 0, 0.55), 0px 2px 6px rgba(0, 0, 0, 0.35)',
+    },
   },
 };

@@ -31,6 +31,8 @@ export interface ColumnLayout {
   contentHeight: number;
   /** Card rects relative to the column's scroll content, keyed by `keyOf(id)`. */
   cards: Record<string, Rect>;
+  /** The "No cards" drop zone, when the column is empty. */
+  empty: Rect | null;
 }
 
 /** Stable string key for an id, so 1 and '1' never collide. */
@@ -68,23 +70,69 @@ export function findTargetColumn(
 }
 
 /**
- * Index to insert at: the number of cards whose vertical midpoint is above
- * `contentY`, ignoring the card being dragged. Order-independent, so the card
- * map doesn't need sorting.
+ * A column's cards as they'd sit with the dragged card taken out, sorted top
+ * to bottom. Uses the rects measured before the drag started, so the result
+ * never depends on mid-drag animations.
+ *
+ * @param sourceRect the dragged card's rect when this is its own column;
+ *   cards below it move up by `space` (its height plus the card gap).
  */
-export function findInsertIndex(
+export function visibleCards(
   cards: Readonly<Record<string, Rect>>,
-  contentY: number,
-  excludeKey: string | null
+  draggedKey: string | null,
+  sourceRect: Rect | null,
+  space: number
+): Rect[] {
+  'worklet';
+  const result: Rect[] = [];
+  for (const key in cards) {
+    if (key === draggedKey) continue;
+    const card = cards[key]!;
+    const shift = sourceRect && card.y > sourceRect.y ? space : 0;
+    result.push({
+      x: card.x,
+      y: card.y - shift,
+      width: card.width,
+      height: card.height,
+    });
+  }
+  result.sort((a, b) => a.y - b.y);
+  return result;
+}
+
+/** Number of cards whose vertical midpoint is above `contentY`. */
+export function insertIndexAt(
+  sortedCards: readonly Rect[],
+  contentY: number
 ): number {
   'worklet';
   let index = 0;
-  for (const key in cards) {
-    if (key === excludeKey) continue;
-    const card = cards[key]!;
+  for (let i = 0; i < sortedCards.length; i++) {
+    const card = sortedCards[i]!;
     if (card.y + card.height / 2 < contentY) index++;
   }
   return index;
+}
+
+/**
+ * Top-left of the slot a dropped card lands in, inside the column's scroll
+ * content: the position of the card currently at `index`, or just below the
+ * last card, or `fallback` (the empty-column drop zone) when there are none.
+ */
+export function slotPosition(
+  sortedCards: readonly Rect[],
+  index: number,
+  gap: number,
+  fallback: { x: number; y: number }
+): { x: number; y: number } {
+  'worklet';
+  if (sortedCards.length === 0) return { x: fallback.x, y: fallback.y };
+  if (index < sortedCards.length) {
+    const card = sortedCards[Math.max(0, index)]!;
+    return { x: card.x, y: card.y };
+  }
+  const last = sortedCards[sortedCards.length - 1]!;
+  return { x: last.x, y: last.y + last.height + gap };
 }
 
 /**
@@ -128,26 +176,33 @@ export function clampScroll(
 }
 
 export type ColumnItem<TCard> =
-  { type: 'card'; card: TCard; index: number } | { type: 'placeholder' };
+  | { type: 'card'; card: TCard; index: number; hidden: boolean }
+  /** Opens to show where the card lands; sits before visible card `slot`. */
+  | { type: 'spacer'; key: string; slot: number }
+  /** Opens to show a landing spot after the last card. */
+  | { type: 'end'; slot: number };
 
 /**
- * What a column renders during a drag: its cards without the dragged one,
- * plus a placeholder where the card will land. `index` on each card item is
- * the card's real position in the column, for render props.
+ * What a column renders. While dragging, every visible card gets a spacer in
+ * front of it and an end spacer follows the last card; the dragged card stays
+ * in place (hidden), so its view and gesture are never unmounted or moved.
+ * `index` on card items is the card's real position, for render props.
  */
 export function buildColumnItems<TCard extends { id: KanbanId }>(
   cards: readonly TCard[],
-  hiddenCardId: KanbanId | undefined,
-  placeholderIndex: number | undefined
+  dragging: boolean,
+  hiddenCardId: KanbanId | undefined
 ): ColumnItem<TCard>[] {
   const items: ColumnItem<TCard>[] = [];
+  let slot = 0;
   cards.forEach((card, index) => {
-    if (hiddenCardId !== undefined && card.id === hiddenCardId) return;
-    items.push({ type: 'card', card, index });
+    const hidden = hiddenCardId !== undefined && card.id === hiddenCardId;
+    if (dragging && !hidden) {
+      items.push({ type: 'spacer', key: `spacer:${keyOf(card.id)}`, slot });
+    }
+    items.push({ type: 'card', card, index, hidden });
+    if (!hidden) slot++;
   });
-  if (placeholderIndex !== undefined) {
-    const at = Math.min(Math.max(placeholderIndex, 0), items.length);
-    items.splice(at, 0, { type: 'placeholder' });
-  }
+  if (dragging && cards.length > 0) items.push({ type: 'end', slot });
   return items;
 }

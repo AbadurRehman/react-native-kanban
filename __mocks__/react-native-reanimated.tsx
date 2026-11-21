@@ -61,7 +61,30 @@ export const useHandler = () => ({
 });
 export const setGestureState = () => {};
 
-export const measure = () => null;
+// Tests queue the boxes `measure` returns, in call order (a drag measures the
+// card, then the board). Without a queue, everything is a 256×60 box at the
+// window origin.
+type Box = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  pageX: number;
+  pageY: number;
+};
+const DEFAULT_BOX: Box = {
+  x: 0,
+  y: 0,
+  width: 256,
+  height: 60,
+  pageX: 0,
+  pageY: 0,
+};
+const measureQueue: Box[] = [];
+export const __queueMeasure = (...boxes: Box[]) => {
+  measureQueue.push(...boxes);
+};
+export const measure = (): Box => measureQueue.shift() ?? DEFAULT_BOX;
 export const scrollTo = () => {};
 export const runOnJS =
   <A extends unknown[], R>(fn: (...args: A) => R) =>

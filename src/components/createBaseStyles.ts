@@ -2,7 +2,6 @@ import { StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
 import type { KanbanTheme } from '../theme/types';
 
 export type KanbanBaseStyles = {
-  board: ViewStyle;
   boardScroll: ViewStyle;
   boardContent: ViewStyle;
   column: ViewStyle;
@@ -21,6 +20,10 @@ export type KanbanBaseStyles = {
   emptyColumn: ViewStyle;
   emptyColumnText: TextStyle;
   pressed: ViewStyle;
+  boardRoot: ViewStyle;
+  boardViewport: ViewStyle;
+  placeholder: ViewStyle;
+  dragOverlay: ViewStyle;
 };
 
 /** Default styles for every part of the board, derived from the theme. */
@@ -28,10 +31,6 @@ export function createBaseStyles(theme: KanbanTheme): KanbanBaseStyles {
   const { colors, spacing, radius, typography, shadows } = theme;
 
   return StyleSheet.create<KanbanBaseStyles>({
-    board: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
     boardScroll: {
       flex: 1,
     },
@@ -118,6 +117,28 @@ export function createBaseStyles(theme: KanbanTheme): KanbanBaseStyles {
     },
     pressed: {
       opacity: 0.85,
+    },
+    boardRoot: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    boardViewport: {
+      flex: 1,
+    },
+    placeholder: {
+      borderRadius: radius.card,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: colors.accent,
+      backgroundColor: colors.placeholder,
+    },
+    dragOverlay: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      zIndex: 1000,
+      borderRadius: radius.card,
+      ...shadows.cardDragging,
     },
   });
 }
