@@ -55,8 +55,8 @@ async function measureBoard() {
   await layout('kanban-board-viewport', 0, 0, 800, 800);
   await layout('kanban-column-todo', 16, 16, 280, 300);
   await layout('kanban-column-done', 308, 16, 280, 300);
-  await layout('kanban-column-scroll-todo', 0, 36, 280, 260);
-  await layout('kanban-column-scroll-done', 0, 36, 280, 260);
+  await layout('kanban-column-viewport-todo', 0, 36, 280, 260);
+  await layout('kanban-column-viewport-done', 0, 36, 280, 260);
   await layout('kanban-card-1', 12, 0, 256, 60);
   await layout('kanban-card-2', 12, 68, 256, 60);
 }

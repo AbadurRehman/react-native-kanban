@@ -73,6 +73,7 @@ export function createBaseStyles(theme: KanbanTheme): KanbanBaseStyles {
     columnScroll: {
       flexGrow: 0,
       flexShrink: 1,
+      minHeight: 0,
     },
     columnScrollFill: {
       flex: 1,

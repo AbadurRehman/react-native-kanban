@@ -33,6 +33,40 @@ export const initialBoard: KanbanBoard<Task> = {
           priority: 'low',
           tags: ['i18n'],
         },
+        {
+          id: 'k-7',
+          title: 'Custom drag preview',
+          description: 'renderDragPreview, coming in 0.3.0.',
+          priority: 'medium',
+          tags: ['dnd'],
+        },
+        {
+          id: 'k-8',
+          title: 'Lock cards',
+          description: 'canDragCard / canDropCard.',
+          priority: 'low',
+          tags: ['dnd'],
+        },
+        {
+          id: 'k-9',
+          title: 'Column reordering',
+          priority: 'medium',
+          tags: ['0.4.0'],
+        },
+        {
+          id: 'k-10',
+          title: 'Screen reader actions',
+          description: 'Move cards without dragging.',
+          priority: 'high',
+          tags: ['a11y'],
+          assignee: 'AR',
+        },
+        {
+          id: 'k-11',
+          title: 'Right-to-left layouts',
+          priority: 'low',
+          tags: ['i18n'],
+        },
       ],
     },
     {
@@ -42,7 +76,7 @@ export const initialBoard: KanbanBoard<Task> = {
         {
           id: 'k-4',
           title: 'Long-press to drag',
-          description: 'Arrives in 0.2.0.',
+          description: 'Hold a card, then move it anywhere.',
           priority: 'high',
           tags: ['dnd'],
           assignee: 'AR',
@@ -69,6 +103,7 @@ export const initialBoard: KanbanBoard<Task> = {
         },
       ],
     },
+    { id: 'review', title: 'Review', cards: [] },
     { id: 'done', title: 'Done', cards: [] },
   ],
 };
