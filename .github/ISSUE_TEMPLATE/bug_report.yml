@@ -39,6 +39,24 @@ body:
       placeholder: "x.x.x"
     validations:
       required: true
+  - type: dropdown
+    id: app-type
+    attributes:
+      label: App setup
+      options:
+        - React Native CLI
+        - Expo (development build / prebuild)
+        - Expo Go
+        - Web (react-native-web)
+    validations:
+      required: true
+  - type: input
+    id: peer-versions
+    attributes:
+      label: Reanimated / Worklets / Gesture Handler versions
+      placeholder: "reanimated 4.x.x, worklets 0.x.x, gesture-handler 3.x.x"
+    validations:
+      required: true
   - type: textarea
     id: react-native-info
     attributes:

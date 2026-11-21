@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Kanban Example Expo",
+    "slug": "react-native-kanban-example-expo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "kanban.example.expo"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "kanban.example.expo"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
