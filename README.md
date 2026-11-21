@@ -6,8 +6,7 @@
 
 Customizable drag-and-drop Kanban board for React Native, built on [Reanimated](https://docs.swmansion.com/react-native-reanimated/) and [Gesture Handler](https://docs.swmansion.com/react-native-gesture-handler/). Inspired by [react-kanban](https://github.com/lourenci/react-kanban), so the data model will feel familiar if you've used it on the web.
 
-> [!WARNING]
-> **Work in progress.** `0.2.x` adds long-press drag and drop. Drag customization (custom previews, locked cards) lands in `0.3.0`. See the [roadmap](#roadmap).
+> ⚠️ **Work in progress.** `0.2.x` adds long-press drag and drop. Drag customization (custom previews, locked cards) lands in `0.3.0`. See the [roadmap](#roadmap).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/AbadurRehman/react-native-kanban/main/docs/images/drag.png" alt="Dragging a card in light and dark themes" width="560" />
