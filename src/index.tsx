@@ -2,7 +2,11 @@
 export { Board } from './components/Board';
 export { DefaultCard } from './components/Card';
 export type {
+  BoardBaseProps,
+  BoardDataProps,
   BoardProps,
+  CardDragEndEvent,
+  CardDragStartEvent,
   CardRenderInfo,
   ColumnRenderInfo,
   KanbanLabels,

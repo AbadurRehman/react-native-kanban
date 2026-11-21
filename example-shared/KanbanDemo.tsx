@@ -13,9 +13,10 @@ import {
   Board,
   addCard,
   createKanbanTheme,
-  findCard,
   moveCard,
   useKanbanTheme,
+  type CardDragEndEvent,
+  type CardDragStartEvent,
   type CardRenderInfo,
   type KanbanColorScheme,
   type KanbanColumn,
@@ -34,6 +35,7 @@ import { initialBoard, type Task } from './data';
 type WidthMode = 'fixed' | 'fullScreen';
 type CardMode = 'custom' | 'default';
 type HeightMode = 'content' | 'fill';
+type DragMode = 'on' | 'off';
 
 const PRIORITY_COLORS: Record<Task['priority'], string> = {
   high: '#EF4444',
@@ -58,7 +60,9 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
   const [widthMode, setWidthMode] = useState<WidthMode>('fixed');
   const [cardMode, setCardMode] = useState<CardMode>('custom');
   const [heightMode, setHeightMode] = useState<HeightMode>('content');
+  const [dragMode, setDragMode] = useState<DragMode>('on');
   const [board, setBoard] = useState(initialBoard);
+  const [lastEvent, setLastEvent] = useState('Long-press a card to drag it.');
   const nextId = useRef(1);
 
   // Same theme the board resolves, so the demo chrome matches it.
@@ -75,19 +79,34 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
     onSchemeChange?.(theme.scheme);
   }, [theme.scheme, onSchemeChange]);
 
-  // Tap a card to move it to the top of the next column (wraps around).
-  const handleCardPress = useCallback((card: Task) => {
-    setBoard((current) => {
-      const location = findCard(current, card.id);
-      if (!location) return current;
-      const next =
-        current.columns[(location.columnIndex + 1) % current.columns.length]!;
-      return moveCard(
-        current,
-        { fromColumnId: location.columnId, fromPosition: location.position },
-        { toColumnId: next.id, toPosition: 0 }
+  const columnTitle = useCallback(
+    (id: KanbanColumn['id']) =>
+      board.columns.find((column) => column.id === id)?.title ?? String(id),
+    [board.columns]
+  );
+
+  const handleDragStart = useCallback(({ card }: CardDragStartEvent<Task>) => {
+    setLastEvent(`Lifted “${card.title}”`);
+  }, []);
+
+  // Controlled board: apply each drop with moveCard.
+  const handleDragEnd = useCallback(
+    ({ card, source, destination }: CardDragEndEvent<Task>) => {
+      setBoard((current) => moveCard(current, source, destination));
+      const stayed =
+        source.fromColumnId === destination.toColumnId &&
+        source.fromPosition === destination.toPosition;
+      setLastEvent(
+        stayed
+          ? `Put “${card.title}” back`
+          : `Moved “${card.title}” to ${columnTitle(destination.toColumnId)}, position ${destination.toPosition + 1}`
       );
-    });
+    },
+    [columnTitle]
+  );
+
+  const handleCardPress = useCallback((card: Task) => {
+    setLastEvent(`Tapped “${card.title}”`);
   }, []);
 
   const handleAddCard = useCallback((columnId: KanbanColumn['id']) => {
@@ -122,7 +141,7 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.header, { paddingTop: TOP_INSET }]}>
         <Text style={chrome.title}>react-native-kanban</Text>
-        <Text style={chrome.subtitle}>v0.1 demo · {platformLabel}</Text>
+        <Text style={chrome.subtitle}>v0.2 demo · {platformLabel}</Text>
       </View>
 
       <ScrollView
@@ -160,6 +179,13 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
           theme={theme}
         />
         <Segmented
+          label="Drag"
+          value={dragMode}
+          options={['on', 'off']}
+          onChange={setDragMode}
+          theme={theme}
+        />
+        <Segmented
           label="Cards"
           value={cardMode}
           options={['custom', 'default']}
@@ -168,8 +194,8 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
         />
       </ScrollView>
 
-      <Text style={chrome.hint}>
-        Tap a card to move it to the next column · drag & drop arrives in 0.2.0
+      <Text style={chrome.hint} testID="demo-last-event" numberOfLines={1}>
+        {lastEvent}
       </Text>
 
       <Board
@@ -181,6 +207,9 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
         renderCard={cardMode === 'custom' ? renderCard : undefined}
         renderColumnFooter={renderColumnFooter}
         onCardPress={handleCardPress}
+        onCardDragStart={handleDragStart}
+        onCardDragEnd={handleDragEnd}
+        disableCardDrag={dragMode === 'off'}
       />
     </View>
   );
