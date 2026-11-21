@@ -7,7 +7,11 @@
 Customizable drag-and-drop Kanban board for React Native, built on [Reanimated](https://docs.swmansion.com/react-native-reanimated/) and [Gesture Handler](https://docs.swmansion.com/react-native-gesture-handler/). Inspired by [react-kanban](https://github.com/lourenci/react-kanban), so the data model will feel familiar if you've used it on the web.
 
 > [!WARNING]
-> **Work in progress.** `0.0.x` only ships the data model types. The `<Board />` component lands in `0.1.0`, and drag & drop in `0.2.0`. See the [roadmap](#roadmap).
+> **Work in progress.** `0.1.x` renders and themes the board. Drag & drop lands in `0.2.0`. See the [roadmap](#roadmap).
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/AbadurRehman/react-native-kanban/main/docs/images/demo.png" alt="Light, dark and full-height boards" width="760" />
+</p>
 
 ## Goals
 
@@ -33,6 +37,147 @@ npm install react-native-kanban react-native-reanimated react-native-worklets re
 - **React Native CLI:** add `'react-native-worklets/plugin'` as the **last** plugin in `babel.config.js`.
 - **Expo (SDK 54+):** no Babel changes needed. Install the peers with `npx expo install`.
 - Wrap your app in `GestureHandlerRootView`.
+
+## Usage
+
+```tsx
+import { useState } from 'react';
+import { Board, moveCard, type KanbanBoard } from 'react-native-kanban';
+
+const initialBoard: KanbanBoard = {
+  columns: [
+    {
+      id: 'todo',
+      title: 'To do',
+      cards: [{ id: 1, title: 'Design card', description: 'Theme tokens first' }],
+    },
+    { id: 'done', title: 'Done', cards: [] },
+  ],
+};
+
+export function TaskBoard() {
+  const [board, setBoard] = useState(initialBoard);
+
+  return (
+    <Board
+      board={board}
+      theme="auto"
+      onCardPress={(card, { column, index }) =>
+        setBoard((current) =>
+          moveCard(
+            current,
+            { fromColumnId: column.id, fromPosition: index },
+            { toColumnId: 'done', toPosition: 0 }
+          )
+        )
+      }
+    />
+  );
+}
+```
+
+The board fills its parent, so give the parent a size (for example `flex: 1`).
+
+### Board props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `board` | `KanbanBoard` | required | The board to display. |
+| `theme` | `'light' \| 'dark' \| 'auto' \| KanbanThemeInput` | `'light'` | Preset or custom theme. `'auto'` follows the device. |
+| `density` | `'comfortable' \| 'compact'` | `'comfortable'` | Compact tightens spacing and type. |
+| `columnWidth` | `number \| 'fullScreen'` | `280` (`240` compact) | `'fullScreen'` shows one column per screen. |
+| `columnHeight` | `'content' \| 'fill'` | `'content'` | Size columns to their cards, or stretch them to the board height. |
+| `snapToColumns` | `boolean` | `true` for `'fullScreen'` | Snap horizontal scrolling to columns. |
+| `showCardCount` | `boolean` | `true` | Count badge next to column titles. |
+| `styles` | `KanbanStyles` | | Style overrides for each part (see below). |
+| `labels` | `Partial<KanbanLabels>` | | Translatable strings, e.g. `{ emptyColumn: 'Sin tarjetas' }`. |
+| `renderCard` | `(card, { column, index, theme }) => ReactNode` | | Replace the default card. |
+| `renderColumnHeader` | `(column, { index, cardCount, theme }) => ReactNode` | | Replace the title + count header. |
+| `renderColumnFooter` | `(column, info) => ReactNode` | | Render under a column's cards, e.g. an "Add card" button. |
+| `renderEmptyColumn` | `(column, info) => ReactNode` | | Replace the "No cards" placeholder. |
+| `onCardPress` | `(card, { column, index, theme }) => void` | | Makes cards accessible buttons. |
+| `style` | `StyleProp<ViewStyle>` | | Outer container style. |
+
+Wrap render props in `useCallback` so unchanged columns and cards skip re-rendering.
+
+## Theming
+
+Pick a preset, or pass a theme object. Nested tokens are merged into the preset, so you only override what you need:
+
+```tsx
+<Board
+  board={board}
+  theme={{
+    base: 'auto', // 'light' | 'dark' | 'auto'
+    colors: { accent: '#7C3AED' },
+    typography: { cardTitle: { fontFamily: 'Inter-SemiBold' } },
+    radius: { card: 6 },
+    dark: { colors: { background: '#000000' } }, // only in dark mode
+    light: { colors: { background: '#FFFFFF' } }, // only in light mode
+  }}
+  density="compact"
+/>
+```
+
+| Token group | Keys |
+| --- | --- |
+| `colors` | `background`, `column`, `columnTitle`, `card`, `cardTitle`, `cardDescription`, `countBadge`, `countBadgeText`, `border`, `accent`, `onAccent`, `emptyColumnText`, `placeholder` |
+| `spacing` | `boardPadding`, `columnGap`, `columnPadding`, `cardGap`, `cardPadding` |
+| `radius` | `column`, `card`, `badge` |
+| `typography` | `columnTitle`, `cardTitle`, `cardDescription`, `countBadge`, `emptyColumn` (each a text style: `fontFamily`, `fontSize`, `fontWeight`, `lineHeight`, …) |
+| `shadows` | `card` (any view style, e.g. `boxShadow` or `elevation`) |
+
+Custom cards can match the board, including live light/dark switching, with `useKanbanTheme()`:
+
+```tsx
+function TaskCard({ task }: { task: Task }) {
+  const { colors, radius, spacing, typography } = useKanbanTheme();
+  return (
+    <View style={{ backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.cardPadding }}>
+      <Text style={[typography.cardTitle, { color: colors.cardTitle }]}>{task.title}</Text>
+    </View>
+  );
+}
+
+<Board board={board} renderCard={(task) => <TaskCard task={task} />} />;
+```
+
+Need the same colors outside the board (headers, status bar)? `createKanbanTheme(theme, { systemColorScheme, density })` returns the resolved theme, and `lightTheme` / `darkTheme` are exported as plain objects.
+
+### Style overrides
+
+For one-off tweaks without a custom theme, `styles` targets each part of the board:
+
+```tsx
+<Board
+  board={board}
+  styles={{
+    column: { borderWidth: 1, borderColor: '#E5E7EB' },
+    columnTitle: { textTransform: 'uppercase', letterSpacing: 0.5 },
+    card: { borderRadius: 4 },
+  }}
+/>
+```
+
+Keys: `boardContent`, `column`, `columnHeader`, `columnTitle`, `countBadge`, `countBadgeText`, `columnContent`, `columnFooter`, `card`, `cardTitle`, `cardDescription`, `emptyColumn`, `emptyColumnText`.
+
+## Helpers
+
+Pure functions that return a new board. They never mutate their input, keep unchanged columns' object identity (so memoized columns skip re-rendering), and return the same board when nothing changes.
+
+| Helper | Example |
+| --- | --- |
+| `moveCard(board, source, destination)` | `moveCard(b, { fromColumnId: 'todo', fromPosition: 0 }, { toColumnId: 'done', toPosition: 0 })` |
+| `moveColumn(board, source, destination)` | `moveColumn(b, { fromPosition: 0 }, { toPosition: 2 })` |
+| `addCard(board, columnId, card, { position? })` | `addCard(b, 'todo', { id: 9, title: 'New' }, { position: 'top' })` |
+| `removeCard(board, cardId)` | `removeCard(b, 9)` |
+| `updateCard(board, cardId, patch \| updater)` | `updateCard(b, 9, { title: 'Renamed' })` |
+| `addColumn(board, column, { position? })` | `addColumn(b, { id: 'qa', title: 'QA', cards: [] })` |
+| `removeColumn(board, columnId)` | `removeColumn(b, 'qa')` |
+| `updateColumn(board, columnId, patch \| updater)` | `updateColumn(b, 'qa', { title: 'Review' })` |
+| `findCard(board, cardId)` | `findCard(b, 9)` returns `{ card, columnId, columnIndex, position }` |
+
+`position` is `'top'`, `'bottom'` (default) or an index.
 
 ## Data model
 
@@ -61,12 +206,12 @@ interface TaskCard extends KanbanCard {
 const board: KanbanBoard<TaskCard> = { columns: [] };
 ```
 
-Exported types: `KanbanBoard`, `KanbanColumn`, `KanbanCard`, `KanbanId`, `CardSource`, `CardDestination`, `ColumnSource`, `ColumnDestination`.
+Data types: `KanbanBoard`, `KanbanColumn`, `KanbanCard`, `KanbanId`, `CardSource`, `CardDestination`, `ColumnSource`, `ColumnDestination`.
 
 ## Roadmap
 
 - [x] **0.0.x: Setup.** Library scaffold, React Native CLI + Expo example apps, CI, data model types.
-- [ ] **0.1.0: Static board + theming.** `<Board />`, theme presets, style overrides, render props, layout options, helpers.
+- [x] **0.1.0: Static board + theming.** `<Board />`, theme presets, style overrides, render props, layout options, helpers.
 - [ ] **0.2.0: Card drag & drop.** Long-press drag, placeholder, auto-scroll, controlled/uncontrolled, callbacks.
 - [ ] **0.3.0: Drag customization.** `dragStyle`, custom drag preview/placeholder, `canDragCard`/`canDropCard`.
 - [ ] **0.4.0: Columns & scale.** Column reordering, virtualization, 500+ card benchmarks.
@@ -74,7 +219,7 @@ Exported types: `KanbanBoard`, `KanbanColumn`, `KanbanCard`, `KanbanId`, `CardSo
 
 ## Example apps
 
-This repo has two example apps that use the library straight from `src/`:
+This repo has two example apps that use the library straight from `src/`. Both render the same demo from [`example-shared/`](./example-shared), which switches theme, density, column width/height and card style at runtime:
 
 | App | Folder | Run |
 | --- | --- | --- |
