@@ -150,7 +150,11 @@ export function moveColumn<
   if (position === source.fromPosition) return board;
   return {
     ...board,
-    columns: insertAt(removeAt(board.columns, source.fromPosition), position, column),
+    columns: insertAt(
+      removeAt(board.columns, source.fromPosition),
+      position,
+      column
+    ),
   };
 }
 
