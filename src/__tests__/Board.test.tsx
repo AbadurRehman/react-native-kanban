@@ -32,7 +32,7 @@ const styleOf = (testID: string) =>
   StyleSheet.flatten(screen.getByTestId(testID).props.style);
 
 const layoutBoard = async (width: number) =>
-  fireEvent(screen.getByTestId('kanban-board'), 'layout', {
+  fireEvent(screen.getByTestId('kanban-board-viewport'), 'layout', {
     nativeEvent: { layout: { x: 0, y: 0, width, height: 800 } },
   });
 

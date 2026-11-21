@@ -1,9 +1,28 @@
-import { memo, useCallback } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  measure,
+  runOnJS,
+  useAnimatedRef,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
+import { DROP_MS, LONG_PRESS_MS } from '../dnd/constants';
+import { useDragContext } from '../dnd/DragContext';
+import { dropPosition, moveOverlay, updateDragTarget } from '../dnd/engine';
+import { keyOf } from '../dnd/geometry';
+import { removeCardLayout, setCardLayout } from '../dnd/registry';
 import type { KanbanTheme } from '../theme/types';
 import type { KanbanCard, KanbanColumn } from '../types';
 import type { KanbanBaseStyles } from './createBaseStyles';
-import type { BoardProps, CardRenderInfo, KanbanStyles } from './types';
+import type { BoardBaseProps, CardRenderInfo, KanbanStyles } from './types';
 
 interface DefaultCardProps {
   card: KanbanCard;
@@ -37,11 +56,16 @@ interface CardItemProps<
   card: TCard;
   column: TColumn;
   index: number;
+  /**
+   * This card is being dragged: it stays mounted (so its gesture keeps
+   * running) but leaves the layout and turns invisible.
+   */
+  hidden: boolean;
   theme: KanbanTheme;
   base: KanbanBaseStyles;
   styles: KanbanStyles | undefined;
-  renderCard: BoardProps<TCard, TColumn>['renderCard'];
-  onCardPress: BoardProps<TCard, TColumn>['onCardPress'];
+  renderCard: BoardBaseProps<TCard, TColumn>['renderCard'];
+  onCardPress: BoardBaseProps<TCard, TColumn>['onCardPress'];
 }
 
 function CardItemImpl<
@@ -51,12 +75,132 @@ function CardItemImpl<
   card,
   column,
   index,
+  hidden,
   theme,
   base,
   styles,
   renderCard,
   onCardPress,
 }: CardItemProps<TCard, TColumn>) {
+  const { shared, actions, enabled, dragCount } = useDragContext();
+  const cardRef = useAnimatedRef<Animated.View>();
+  const cardKey = keyOf(card.id);
+  const columnKey = keyOf(column.id);
+
+  // Report this card's rect so drag hit tests can find drop positions.
+  const { layouts, active } = shared;
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { x, y, width, height } = event.nativeEvent.layout;
+      setCardLayout(layouts, active, columnKey, cardKey, {
+        x,
+        y,
+        width,
+        height,
+      });
+    },
+    [layouts, active, columnKey, cardKey]
+  );
+  useEffect(
+    () => () => removeCardLayout(layouts, active, columnKey, cardKey),
+    [layouts, active, columnKey, cardKey]
+  );
+
+  const pan = useMemo(() => {
+    const s = shared;
+    return Gesture.Pan()
+      .withTestId(`kanban-card-drag-${String(card.id)}`)
+      .enabled(enabled)
+      .activateAfterLongPress(LONG_PRESS_MS)
+      .onStart((event) => {
+        'worklet';
+        if (s.active.value) return; // one drag at a time
+        const cardBox = measure(cardRef);
+        const boardBox = measure(s.boardRef);
+        if (!cardBox || !boardBox) return;
+
+        s.boardPageX.value = boardBox.pageX;
+        s.boardPageY.value = boardBox.pageY;
+        s.fingerX.value = event.absoluteX;
+        s.fingerY.value = event.absoluteY;
+        s.grabX.value = event.absoluteX - cardBox.pageX;
+        s.grabY.value = event.absoluteY - cardBox.pageY;
+        s.overlayX.value = cardBox.pageX - boardBox.pageX;
+        s.overlayY.value = cardBox.pageY - boardBox.pageY;
+        s.draggedKey.value = cardKey;
+        s.sourceKey.value = columnKey;
+        s.draggedRect.value = s.layouts.value[columnKey]?.cards[cardKey] ?? {
+          x: s.cardInset.value,
+          y: 0,
+          width: cardBox.width,
+          height: cardBox.height,
+        };
+        s.space.value = cardBox.height + s.cardGap.value;
+        s.targetKey.value = columnKey;
+        s.targetIndex.value = index;
+        s.dropping.value = false;
+        s.active.value = true;
+        s.lift.value = withSpring(1, { damping: 18, stiffness: 260 });
+        runOnJS(actions.start)(
+          cardKey,
+          columnKey,
+          index,
+          cardBox.width,
+          cardBox.height
+        );
+      })
+      .onUpdate((event) => {
+        'worklet';
+        if (s.draggedKey.value !== cardKey || s.dropping.value) return;
+        s.fingerX.value = event.absoluteX;
+        s.fingerY.value = event.absoluteY;
+        moveOverlay(s);
+        updateDragTarget(s, actions.setTarget);
+      })
+      .onFinalize(() => {
+        'worklet';
+        if (!s.active.value || s.dropping.value) return;
+        if (s.draggedKey.value !== cardKey) return;
+        s.dropping.value = true;
+
+        // Glide into the landing spot, then commit the move on the JS thread.
+        const landing = dropPosition(s);
+        s.lift.value = withTiming(0, { duration: DROP_MS });
+        if (landing) {
+          s.overlayX.value = withTiming(landing.x, { duration: DROP_MS });
+          s.overlayY.value = withTiming(
+            landing.y,
+            { duration: DROP_MS },
+            () => {
+              runOnJS(actions.finish)();
+            }
+          );
+        } else {
+          runOnJS(actions.finish)();
+        }
+      });
+  }, [shared, actions, enabled, cardRef, card.id, cardKey, columnKey, index]);
+
+  // Releasing a drag also ends the press: ignore presses that turned into a
+  // drag. Presses without a press-in (screen reader activation) always count.
+  const dragCountAtPressIn = useRef(-1);
+  const handlePressIn = useCallback(() => {
+    dragCountAtPressIn.current = dragCount.current;
+  }, [dragCount]);
+  const handlePressOut = useCallback(() => {
+    // onPress (if any) fires right after onPressOut; clear afterwards.
+    setTimeout(() => {
+      dragCountAtPressIn.current = -1;
+    }, 0);
+  }, []);
+  const handlePress = useCallback(() => {
+    const turnedIntoDrag =
+      dragCountAtPressIn.current !== -1 &&
+      dragCount.current !== dragCountAtPressIn.current;
+    if (turnedIntoDrag) return;
+    onCardPress?.(card, { column, index, theme });
+  }, [dragCount, onCardPress, card, column, index, theme]);
+
   const info: CardRenderInfo<TColumn> = { column, index, theme };
   const content = renderCard ? (
     renderCard(card, info)
@@ -64,26 +208,39 @@ function CardItemImpl<
     <DefaultCard card={card} base={base} styles={styles} />
   );
 
-  const handlePress = useCallback(
-    () => onCardPress?.(card, { column, index, theme }),
-    [onCardPress, card, column, index, theme]
-  );
-
-  if (!onCardPress) {
-    return <View testID={`kanban-card-${card.id}`}>{content}</View>;
-  }
-
   return (
-    <Pressable
-      testID={`kanban-card-${card.id}`}
-      accessibilityRole="button"
-      accessibilityLabel={card.title ?? String(card.id)}
-      onPress={handlePress}
-      style={({ pressed }) => (pressed ? base.pressed : undefined)}
-    >
-      {content}
-    </Pressable>
+    <GestureDetector gesture={pan}>
+      <Animated.View
+        ref={cardRef}
+        testID={`kanban-card-${card.id}`}
+        onLayout={handleLayout}
+        collapsable={false}
+        pointerEvents={hidden ? 'none' : 'auto'}
+        style={hidden ? cardStyles.hidden : undefined}
+      >
+        {onCardPress ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={card.title ?? String(card.id)}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            onPress={handlePress}
+            style={({ pressed }) => (pressed ? base.pressed : undefined)}
+          >
+            {content}
+          </Pressable>
+        ) : (
+          content
+        )}
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
 export const CardItem = memo(CardItemImpl) as typeof CardItemImpl;
+
+const cardStyles = StyleSheet.create({
+  // Out of the layout flow (absolute children don't take part in `gap`) and
+  // invisible, but still mounted.
+  hidden: { position: 'absolute', top: 0, left: 0, right: 0, opacity: 0 },
+});
