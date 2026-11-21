@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Profiler,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Platform,
   Pressable,
@@ -30,7 +37,8 @@ import {
   type KanbanTheme,
   type KanbanThemePreset,
 } from 'react-native-kanban';
-import { initialBoard, type Task } from './data';
+import { formatBenchmark, useBenchmark } from './benchmark';
+import { initialBoard, makeBenchmarkBoard, type Task } from './data';
 
 /**
  * Shared demo used by both example apps (example/ and example-expo/).
@@ -49,6 +57,7 @@ type LandingMode = 'dashed' | 'tinted';
 type DelayMode = '0ms' | '150ms' | '300ms' | '600ms';
 type ScrollMode = 'off' | 'normal' | 'fast';
 type RulesMode = 'off' | 'on';
+type DataMode = 'demo' | '500' | '1000' | '2000';
 
 const LIFT_STYLES: Record<LiftMode, KanbanDragStyle | undefined> = {
   subtle: { scale: 1.01, rotation: 0 },
@@ -109,7 +118,9 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
   const [scrollMode, setScrollMode] = useState<ScrollMode>('normal');
   const [rulesMode, setRulesMode] = useState<RulesMode>('off');
   const [columnDragMode, setColumnDragMode] = useState<ColumnDragMode>('on');
+  const [dataMode, setDataMode] = useState<DataMode>('demo');
   const [board, setBoard] = useState(initialBoard);
+  const bench = useBenchmark(dataMode !== 'demo');
   const [lastEvent, setLastEvent] = useState(
     'Long-press a card or a column header to drag it.'
   );
@@ -135,13 +146,34 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
     [board.columns]
   );
 
-  const handleDragStart = useCallback(({ card }: CardDragStartEvent<Task>) => {
-    setLastEvent(`Lifted “${card.title}”`);
-  }, []);
+  // Benchmark boards: swap the data and time the remount.
+  const { mark, startFrames, stopFrames, reset: resetBench } = bench;
+  const handleDataMode = useCallback(
+    (mode: DataMode) => {
+      resetBench();
+      mark('mount');
+      setDataMode(mode);
+      setBoard(
+        mode === 'demo' ? initialBoard : makeBenchmarkBoard(Number(mode))
+      );
+    },
+    [mark, resetBench]
+  );
+
+  const handleDragStart = useCallback(
+    ({ card }: CardDragStartEvent<Task>) => {
+      mark('lift');
+      startFrames('card');
+      setLastEvent(`Lifted “${card.title}”`);
+    },
+    [mark, startFrames]
+  );
 
   // Controlled board: apply each drop with moveCard.
   const handleDragEnd = useCallback(
     ({ card, source, destination }: CardDragEndEvent<Task>) => {
+      stopFrames();
+      mark('drop');
       setBoard((current) => moveCard(current, source, destination));
       const stayed =
         source.fromColumnId === destination.toColumnId &&
@@ -152,14 +184,16 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
           : `Moved “${card.title}” to ${columnTitle(destination.toColumnId)}, position ${destination.toPosition + 1}`
       );
     },
-    [columnTitle]
+    [columnTitle, mark, stopFrames]
   );
 
   const handleColumnDragStart = useCallback(
     ({ column }: ColumnDragStartEvent<KanbanColumn<Task>>) => {
+      mark('columnLift');
+      startFrames('column');
       setLastEvent(`Lifted the “${column.title}” column`);
     },
-    []
+    [mark, startFrames]
   );
 
   // Columns move the same way: apply each drop with moveColumn.
@@ -169,6 +203,8 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
       source,
       destination,
     }: ColumnDragEndEvent<KanbanColumn<Task>>) => {
+      stopFrames();
+      mark('columnDrop');
       setBoard((current) => moveColumn(current, source, destination));
       setLastEvent(
         source.fromPosition === destination.toPosition
@@ -176,7 +212,7 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
           : `Moved the “${column.title}” column to position ${destination.toPosition + 1}`
       );
     },
-    []
+    [mark, stopFrames]
   );
 
   const handleCardPress = useCallback((card: Task) => {
@@ -255,6 +291,13 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
         style={styles.controlsScroll}
         contentContainerStyle={styles.controls}
       >
+        <Segmented
+          label="Data"
+          value={dataMode}
+          options={['demo', '500', '1000', '2000']}
+          onChange={handleDataMode}
+          theme={theme}
+        />
         <Segmented
           label="Theme"
           value={themeMode}
@@ -371,34 +414,49 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
         {lastEvent}
       </Text>
 
-      <Board
-        board={board}
-        theme={themeMode}
-        density={density}
-        columnWidth={widthMode === 'fullScreen' ? 'fullScreen' : undefined}
-        columnHeight={heightMode}
-        renderCard={cardMode === 'custom' ? renderCard : undefined}
-        renderColumnFooter={renderColumnFooter}
-        onCardPress={handleCardPress}
-        onCardDragStart={handleDragStart}
-        onCardDragEnd={handleDragEnd}
-        disableCardDrag={dragMode === 'off'}
-        dragStyle={LIFT_STYLES[liftMode]}
-        renderDragPreview={
-          previewMode === 'compact' ? renderCompactPreview : undefined
-        }
-        renderPlaceholder={
-          landingMode === 'tinted' ? renderTintedPlaceholder : undefined
-        }
-        dragActivationDelay={DELAYS[delayMode]}
-        autoScroll={AUTO_SCROLL[scrollMode]}
-        canDragCard={rulesMode === 'on' ? canDragTask : undefined}
-        canDropCard={rulesMode === 'on' ? canDropTask : undefined}
-        disableColumnDrag={columnDragMode === 'off'}
-        canDragColumn={rulesMode === 'on' ? canDragList : undefined}
-        onColumnDragStart={handleColumnDragStart}
-        onColumnDragEnd={handleColumnDragEnd}
-      />
+      {dataMode !== 'demo' ? (
+        <View testID="demo-bench" style={styles.bench}>
+          {formatBenchmark(Number(dataMode), bench.timings, bench.frames).map(
+            (line) => (
+              <Text key={line} style={chrome.benchLine}>
+                {line}
+              </Text>
+            )
+          )}
+        </View>
+      ) : null}
+
+      <Profiler id="board" onRender={bench.onRender}>
+        <Board
+          key={dataMode}
+          board={board}
+          theme={themeMode}
+          density={density}
+          columnWidth={widthMode === 'fullScreen' ? 'fullScreen' : undefined}
+          columnHeight={heightMode}
+          renderCard={cardMode === 'custom' ? renderCard : undefined}
+          renderColumnFooter={renderColumnFooter}
+          onCardPress={handleCardPress}
+          onCardDragStart={handleDragStart}
+          onCardDragEnd={handleDragEnd}
+          disableCardDrag={dragMode === 'off'}
+          dragStyle={LIFT_STYLES[liftMode]}
+          renderDragPreview={
+            previewMode === 'compact' ? renderCompactPreview : undefined
+          }
+          renderPlaceholder={
+            landingMode === 'tinted' ? renderTintedPlaceholder : undefined
+          }
+          dragActivationDelay={DELAYS[delayMode]}
+          autoScroll={AUTO_SCROLL[scrollMode]}
+          canDragCard={rulesMode === 'on' ? canDragTask : undefined}
+          canDropCard={rulesMode === 'on' ? canDropTask : undefined}
+          disableColumnDrag={columnDragMode === 'off'}
+          canDragColumn={rulesMode === 'on' ? canDragList : undefined}
+          onColumnDragStart={handleColumnDragStart}
+          onColumnDragEnd={handleColumnDragEnd}
+        />
+      </Profiler>
     </View>
   );
 }
@@ -606,6 +664,11 @@ const chromeStyles = (theme: KanbanTheme) => ({
     fontSize: 12,
     color: theme.colors.cardDescription,
   },
+  benchLine: {
+    fontSize: 12,
+    fontVariant: ['tabular-nums' as const],
+    color: theme.colors.columnTitle,
+  },
   segmentLabel: {
     marginBottom: 4,
     fontSize: 11,
@@ -623,6 +686,7 @@ const chromeStyles = (theme: KanbanTheme) => ({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  bench: { paddingHorizontal: 16, paddingTop: 8, gap: 2 },
   header: {
     paddingHorizontal: 16,
     paddingBottom: 12,
