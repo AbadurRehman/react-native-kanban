@@ -17,10 +17,13 @@ import {
   useKanbanTheme,
   type CardDragEndEvent,
   type CardDragStartEvent,
+  type CardDropCheck,
   type CardRenderInfo,
+  type KanbanAutoScroll,
   type KanbanColorScheme,
   type KanbanColumn,
   type KanbanDensity,
+  type KanbanDragStyle,
   type KanbanTheme,
   type KanbanThemePreset,
 } from 'react-native-kanban';
@@ -36,6 +39,38 @@ type WidthMode = 'fixed' | 'fullScreen';
 type CardMode = 'custom' | 'default';
 type HeightMode = 'content' | 'fill';
 type DragMode = 'on' | 'off';
+type LiftMode = 'subtle' | 'default' | 'bold';
+type PreviewMode = 'card' | 'compact';
+type LandingMode = 'dashed' | 'tinted';
+type DelayMode = '0ms' | '150ms' | '300ms' | '600ms';
+type ScrollMode = 'off' | 'normal' | 'fast';
+type RulesMode = 'off' | 'on';
+
+const LIFT_STYLES: Record<LiftMode, KanbanDragStyle | undefined> = {
+  subtle: { scale: 1.01, rotation: 0 },
+  default: undefined,
+  bold: { scale: 1.08, rotation: 4, opacity: 0.9 },
+};
+const DELAYS: Record<DelayMode, number> = {
+  '0ms': 0,
+  '150ms': 150,
+  '300ms': 300,
+  '600ms': 600,
+};
+const AUTO_SCROLL: Record<ScrollMode, boolean | KanbanAutoScroll> = {
+  off: false,
+  normal: true,
+  fast: { edge: 96, speed: 28 },
+};
+
+// Rules: finished cards are locked; Review only takes cards from In progress.
+const canDragTask = (_task: Task, column: KanbanColumn<Task>) =>
+  column.id !== 'done';
+const canDropTask = ({
+  fromColumn,
+  toColumn,
+}: CardDropCheck<Task, KanbanColumn<Task>>) =>
+  toColumn.id !== 'review' || fromColumn.id === 'doing';
 
 const PRIORITY_COLORS: Record<Task['priority'], string> = {
   high: '#EF4444',
@@ -61,6 +96,13 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
   const [cardMode, setCardMode] = useState<CardMode>('custom');
   const [heightMode, setHeightMode] = useState<HeightMode>('content');
   const [dragMode, setDragMode] = useState<DragMode>('on');
+  const [showDragSettings, setShowDragSettings] = useState(false);
+  const [liftMode, setLiftMode] = useState<LiftMode>('default');
+  const [previewMode, setPreviewMode] = useState<PreviewMode>('card');
+  const [landingMode, setLandingMode] = useState<LandingMode>('dashed');
+  const [delayMode, setDelayMode] = useState<DelayMode>('300ms');
+  const [scrollMode, setScrollMode] = useState<ScrollMode>('normal');
+  const [rulesMode, setRulesMode] = useState<RulesMode>('off');
   const [board, setBoard] = useState(initialBoard);
   const [lastEvent, setLastEvent] = useState('Long-press a card to drag it.');
   const nextId = useRef(1);
@@ -128,6 +170,12 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
     []
   );
 
+  const renderCompactPreview = useCallback(
+    (task: Task) => <CompactPreview task={task} />,
+    []
+  );
+  const renderTintedPlaceholder = useCallback(() => <TintedPlaceholder />, []);
+
   const renderColumnFooter = useCallback(
     (column: KanbanColumn<Task>) => (
       <AddCardButton onPress={() => handleAddCard(column.id)} />
@@ -140,8 +188,33 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.header, { paddingTop: TOP_INSET }]}>
-        <Text style={chrome.title}>react-native-kanban</Text>
-        <Text style={chrome.subtitle}>v0.2 demo · {platformLabel}</Text>
+        <View style={styles.headerText}>
+          <Text style={chrome.title}>react-native-kanban</Text>
+          <Text style={chrome.subtitle}>v0.3 demo · {platformLabel}</Text>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showDragSettings }}
+          testID="demo-drag-settings"
+          onPress={() => setShowDragSettings((shown) => !shown)}
+          style={[
+            styles.settingsButton,
+            {
+              backgroundColor: showDragSettings
+                ? theme.colors.accent
+                : theme.colors.column,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              chrome.segmentText,
+              showDragSettings && { color: theme.colors.onAccent },
+            ]}
+          >
+            Drag settings
+          </Text>
+        </Pressable>
       </View>
 
       <ScrollView
@@ -194,6 +267,67 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
         />
       </ScrollView>
 
+      {showDragSettings ? (
+        <>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={[styles.controlsScroll, styles.dragControls]}
+            contentContainerStyle={styles.controls}
+            testID="demo-drag-panel"
+          >
+            <Segmented
+              label="Lift"
+              value={liftMode}
+              options={['subtle', 'default', 'bold']}
+              onChange={setLiftMode}
+              theme={theme}
+            />
+            <Segmented
+              label="Preview"
+              value={previewMode}
+              options={['card', 'compact']}
+              onChange={setPreviewMode}
+              theme={theme}
+            />
+            <Segmented
+              label="Landing spot"
+              value={landingMode}
+              options={['dashed', 'tinted']}
+              onChange={setLandingMode}
+              theme={theme}
+            />
+            <Segmented
+              label="Hold to drag"
+              value={delayMode}
+              options={['0ms', '150ms', '300ms', '600ms']}
+              onChange={setDelayMode}
+              theme={theme}
+            />
+            <Segmented
+              label="Auto-scroll"
+              value={scrollMode}
+              options={['off', 'normal', 'fast']}
+              onChange={setScrollMode}
+              theme={theme}
+            />
+            <Segmented
+              label="Rules"
+              value={rulesMode}
+              options={['off', 'on']}
+              onChange={setRulesMode}
+              theme={theme}
+            />
+          </ScrollView>
+          {rulesMode === 'on' ? (
+            <Text style={chrome.hint}>
+              Cards in Done are locked. Review only takes cards from In
+              progress.
+            </Text>
+          ) : null}
+        </>
+      ) : null}
+
       <Text style={chrome.hint} testID="demo-last-event" numberOfLines={1}>
         {lastEvent}
       </Text>
@@ -210,6 +344,17 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
         onCardDragStart={handleDragStart}
         onCardDragEnd={handleDragEnd}
         disableCardDrag={dragMode === 'off'}
+        dragStyle={LIFT_STYLES[liftMode]}
+        renderDragPreview={
+          previewMode === 'compact' ? renderCompactPreview : undefined
+        }
+        renderPlaceholder={
+          landingMode === 'tinted' ? renderTintedPlaceholder : undefined
+        }
+        dragActivationDelay={DELAYS[delayMode]}
+        autoScroll={AUTO_SCROLL[scrollMode]}
+        canDragCard={rulesMode === 'on' ? canDragTask : undefined}
+        canDropCard={rulesMode === 'on' ? canDropTask : undefined}
       />
     </View>
   );
@@ -282,6 +427,55 @@ function TaskCard({ task, isDone }: { task: Task; isDone: boolean }) {
           </View>
         ) : null}
       </View>
+    </View>
+  );
+}
+
+/** A small chip that follows the finger instead of the full card. */
+function CompactPreview({ task }: { task: Task }) {
+  const { colors, radius, shadows } = useKanbanTheme();
+  return (
+    <View
+      testID="demo-compact-preview"
+      style={[
+        styles.compactPreview,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.accent,
+          borderRadius: radius.card,
+        },
+        shadows.cardDragging,
+      ]}
+    >
+      <View
+        style={[
+          styles.priorityDot,
+          { backgroundColor: PRIORITY_COLORS[task.priority] },
+        ]}
+      />
+      <Text
+        style={[styles.compactTitle, { color: colors.cardTitle }]}
+        numberOfLines={1}
+      >
+        {task.title}
+      </Text>
+    </View>
+  );
+}
+
+/** A tinted landing spot instead of the default dashed box. */
+function TintedPlaceholder() {
+  const { colors, radius } = useKanbanTheme();
+  return (
+    <View
+      style={[
+        styles.tintedPlaceholder,
+        { backgroundColor: colors.placeholder, borderRadius: radius.card },
+      ]}
+    >
+      <Text style={[styles.tintedText, { color: colors.accent }]}>
+        Drop here
+      </Text>
     </View>
   );
 }
@@ -386,7 +580,37 @@ const chromeStyles = (theme: KanbanTheme) => ({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingBottom: 12 },
+  header: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerText: { flex: 1 },
+  settingsButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  dragControls: { marginTop: 12 },
+  compactPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1.5,
+  },
+  compactTitle: { fontSize: 14, fontWeight: '600', flexShrink: 1 },
+  tintedPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tintedText: { fontSize: 13, fontWeight: '600' },
   controlsScroll: { flexGrow: 0 },
   controls: { paddingHorizontal: 16, gap: 16 },
   segmentGroup: {},

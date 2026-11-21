@@ -137,6 +137,11 @@ describe('renderDragPreview', () => {
     const overlay = within(screen.getByTestId('kanban-drag-overlay'));
     expect(overlay.getByTestId('preview').props.children).toBe('1 from todo');
     expect(overlay.queryByTestId('card-1')).toBeNull();
+    // The preview brings its own look: no default lifted shadow around it.
+    const style = StyleSheet.flatten(
+      screen.getByTestId('kanban-drag-overlay').props.style
+    );
+    expect(style.boxShadow).toBeUndefined();
   });
 
   it('defaults to renderCard', async () => {
@@ -146,6 +151,10 @@ describe('renderDragPreview', () => {
     await liftCard1();
     const overlay = within(screen.getByTestId('kanban-drag-overlay'));
     expect(overlay.getByTestId('card-1')).toBeTruthy();
+    const style = StyleSheet.flatten(
+      screen.getByTestId('kanban-drag-overlay').props.style
+    );
+    expect(style.boxShadow).toBeDefined();
   });
 });
 

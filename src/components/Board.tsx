@@ -605,6 +605,7 @@ export function Board<
                 base={base}
                 styles={styles}
                 renderCard={renderDragPreview ?? renderCard}
+                customPreview={renderDragPreview !== undefined}
                 lift={liftStyle}
               />
             ) : null}
@@ -627,6 +628,8 @@ interface DragOverlayProps<
   base: KanbanBaseStyles;
   styles: KanbanStyles | undefined;
   renderCard: BoardBaseProps<TCard, TColumn>['renderCard'];
+  /** `renderDragPreview` draws it: no default lifted shadow. */
+  customPreview: boolean;
   lift: ResolvedDragStyle;
 }
 
@@ -643,6 +646,7 @@ function DragOverlay<
   base,
   styles,
   renderCard,
+  customPreview,
   lift: liftStyle,
 }: DragOverlayProps<TCard, TColumn>) {
   const { shared } = useDragContext();
@@ -665,7 +669,13 @@ function DragOverlay<
     <Animated.View
       testID="kanban-drag-overlay"
       pointerEvents="none"
-      style={[base.dragOverlay, { width }, styles?.dragOverlay, animatedStyle]}
+      style={[
+        base.dragOverlay,
+        !customPreview && base.dragShadow,
+        { width },
+        styles?.dragOverlay,
+        animatedStyle,
+      ]}
     >
       {renderCard ? (
         renderCard(card, { column, index, theme })
