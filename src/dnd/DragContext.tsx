@@ -40,14 +40,22 @@ export interface DragShared {
   targetKey: SharedValue<string | null>;
   targetIndex: SharedValue<number>;
 
-  /** The dragged card's column and its rect there, measured before lift. */
+  /** The dragged card's column, index and rect there, measured before lift. */
   sourceKey: SharedValue<string | null>;
+  sourceIndex: SharedValue<number>;
   draggedRect: SharedValue<Rect | null>;
+  /** Columns the dragged card may not be dropped into (`canDropCard`). */
+  dropBlocked: SharedValue<Record<string, boolean>>;
   /** Room the landing spot takes: dragged card height plus the card gap. */
   space: SharedValue<number>;
   /** Theme values the geometry needs: gap between cards, card inset. */
   cardGap: SharedValue<number>;
   cardInset: SharedValue<number>;
+
+  /** Auto-scroll edge zones and top speed (`0` = off). */
+  scrollEdgeX: SharedValue<number>;
+  scrollEdgeY: SharedValue<number>;
+  scrollSpeed: SharedValue<number>;
 }
 
 /** JS-thread callbacks, called from worklets with runOnJS. */
@@ -69,6 +77,8 @@ export interface DragContextValue {
   actions: DragActions;
   /** Dragging is turned on for this board. */
   enabled: boolean;
+  /** Long-press time before a card lifts (ms); `0` = on the first move. */
+  activationDelay: number;
   /** Increments on every drag start; used to swallow the tap on release. */
   dragCount: RefObject<number>;
 }

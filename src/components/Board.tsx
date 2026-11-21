@@ -24,12 +24,6 @@ import Animated, {
   useFrameCallback,
   useSharedValue,
 } from 'react-native-reanimated';
-import {
-  EDGE_X,
-  LIFT_ROTATE_DEG,
-  LIFT_SCALE,
-  MAX_SCROLL_SPEED,
-} from '../dnd/constants';
 import { reportDragError } from '../dnd/debug';
 import {
   DragProvider,
@@ -39,6 +33,12 @@ import {
   type DragShared,
 } from '../dnd/DragContext';
 import { updateDragTarget } from '../dnd/engine';
+import {
+  resolveActivationDelay,
+  resolveAutoScroll,
+  resolveDragStyle,
+  type ResolvedDragStyle,
+} from '../dnd/options';
 import {
   autoScrollSpeed,
   clampScroll,
@@ -127,6 +127,13 @@ export function Board<
     renderEmptyColumn,
     onCardPress,
     disableCardDrag = false,
+    dragActivationDelay,
+    canDragCard,
+    canDropCard,
+    dragStyle,
+    renderDragPreview,
+    renderPlaceholder,
+    autoScroll,
     onCardDragStart,
     onCardDragEnd,
     style,
@@ -175,6 +182,8 @@ export function Board<
   const targetKey = useSharedValue<string | null>(null);
   const targetIndex = useSharedValue(0);
   const sourceKey = useSharedValue<string | null>(null);
+  const sourceIndex = useSharedValue(0);
+  const dropBlocked = useSharedValue<Record<string, boolean>>({});
   const draggedRect = useSharedValue<Rect | null>(null);
   const space = useSharedValue(0);
   const cardGap = useSharedValue(theme.spacing.cardGap);
@@ -183,6 +192,24 @@ export function Board<
     cardGap.value = theme.spacing.cardGap;
     cardInset.value = theme.spacing.columnPadding;
   }, [theme, cardGap, cardInset]);
+
+  // Auto-scroll settings, read by the frame loops on the UI thread.
+  const scrolling = resolveAutoScroll(autoScroll);
+  const scrollEdgeX = useSharedValue(scrolling.edgeX);
+  const scrollEdgeY = useSharedValue(scrolling.edgeY);
+  const scrollSpeed = useSharedValue(scrolling.speed);
+  useEffect(() => {
+    scrollEdgeX.value = scrolling.edgeX;
+    scrollEdgeY.value = scrolling.edgeY;
+    scrollSpeed.value = scrolling.speed;
+  }, [
+    scrolling.edgeX,
+    scrolling.edgeY,
+    scrolling.speed,
+    scrollEdgeX,
+    scrollEdgeY,
+    scrollSpeed,
+  ]);
 
   const shared = useMemo<DragShared>(
     () => ({
@@ -207,10 +234,15 @@ export function Board<
       targetKey,
       targetIndex,
       sourceKey,
+      sourceIndex,
+      dropBlocked,
       draggedRect,
       space,
       cardGap,
       cardInset,
+      scrollEdgeX,
+      scrollEdgeY,
+      scrollSpeed,
     }),
     [
       boardRef,
@@ -234,10 +266,15 @@ export function Board<
       targetKey,
       targetIndex,
       sourceKey,
+      sourceIndex,
+      dropBlocked,
       draggedRect,
       space,
       cardGap,
       cardInset,
+      scrollEdgeX,
+      scrollEdgeY,
+      scrollSpeed,
     ]
   );
 
@@ -257,6 +294,7 @@ export function Board<
   const latest = useRef({
     board,
     isControlled,
+    canDropCard,
     onCardDragStart,
     onCardDragEnd,
     onBoardChange: props.onBoardChange,
@@ -265,6 +303,7 @@ export function Board<
     latest.current = {
       board,
       isControlled,
+      canDropCard,
       onCardDragStart,
       onCardDragEnd,
       onBoardChange: props.onBoardChange,
@@ -291,6 +330,17 @@ export function Board<
           return;
         }
         dragCount.current += 1;
+        // Columns this card may not be dropped into, for the hit tests.
+        const canDrop = latest.current.canDropCard;
+        if (canDrop) {
+          const blocked: Record<string, boolean> = {};
+          for (const toColumn of current.columns) {
+            if (!canDrop({ card, fromColumn: column, toColumn })) {
+              blocked[keyOf(toColumn.id)] = true;
+            }
+          }
+          dropBlocked.value = blocked;
+        }
         dragRef.current = {
           card,
           column,
@@ -364,17 +414,19 @@ export function Board<
         setDrag(null);
       },
     }),
-    [resetDragValues]
+    [resetDragValues, dropBlocked]
   );
 
+  const activationDelay = resolveActivationDelay(dragActivationDelay);
   const dragContext = useMemo<DragContextValue>(
     () => ({
       shared,
       actions,
       enabled: !disableCardDrag,
+      activationDelay,
       dragCount,
     }),
-    [shared, actions, disableCardDrag]
+    [shared, actions, disableCardDrag, activationDelay]
   );
 
   // --- Every frame while dragging: auto-scroll the board near its left or
@@ -388,8 +440,8 @@ export function Board<
         x,
         0,
         boardViewportWidth.value,
-        EDGE_X,
-        MAX_SCROLL_SPEED
+        scrollEdgeX.value,
+        scrollSpeed.value
       ) * frames;
     if (speed === 0) return;
     const next = clampScroll(
@@ -467,6 +519,21 @@ export function Board<
     ? Math.max(0, boardSize.height - theme.spacing.boardPadding * 2)
     : undefined;
 
+  const liftStyle = useMemo(
+    () => resolveDragStyle(dragStyle),
+    // Compare the numbers, not the object (often written inline).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dragStyle?.scale, dragStyle?.rotation, dragStyle?.opacity]
+  );
+  // One custom landing spot per drag, reused by every spacer.
+  const placeholder = useMemo(
+    () =>
+      drag && renderPlaceholder
+        ? renderPlaceholder({ card: drag.card, height: drag.height, theme })
+        : undefined,
+    [drag, renderPlaceholder, theme]
+  );
+
   const shouldSnap = snapToColumns ?? isFullScreen;
   const snapInterval = resolvedColumnWidth + theme.spacing.columnGap;
 
@@ -517,6 +584,8 @@ export function Board<
                     renderColumnFooter={renderColumnFooter}
                     renderEmptyColumn={renderEmptyColumn}
                     onCardPress={onCardPress}
+                    canDragCard={canDragCard}
+                    placeholder={placeholder}
                     isDragging={isDragging}
                     draggedHeight={drag?.height ?? 0}
                     hiddenCardId={isSource ? drag!.card.id : undefined}
@@ -535,7 +604,8 @@ export function Board<
                 theme={theme}
                 base={base}
                 styles={styles}
-                renderCard={renderCard}
+                renderCard={renderDragPreview ?? renderCard}
+                lift={liftStyle}
               />
             ) : null}
           </Animated.View>
@@ -557,6 +627,7 @@ interface DragOverlayProps<
   base: KanbanBaseStyles;
   styles: KanbanStyles | undefined;
   renderCard: BoardBaseProps<TCard, TColumn>['renderCard'];
+  lift: ResolvedDragStyle;
 }
 
 /** The lifted card that follows the finger, drawn above every column. */
@@ -572,17 +643,23 @@ function DragOverlay<
   base,
   styles,
   renderCard,
+  lift: liftStyle,
 }: DragOverlayProps<TCard, TColumn>) {
   const { shared } = useDragContext();
   const { overlayX, overlayY, lift } = shared;
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: overlayX.value },
-      { translateY: overlayY.value },
-      { scale: 1 + LIFT_SCALE * lift.value },
-      { rotate: `${LIFT_ROTATE_DEG * lift.value}deg` },
-    ],
-  }));
+  const { scale, rotation, opacity } = liftStyle;
+  const animatedStyle = useAnimatedStyle(
+    () => ({
+      opacity: 1 + (opacity - 1) * lift.value,
+      transform: [
+        { translateX: overlayX.value },
+        { translateY: overlayY.value },
+        { scale: 1 + (scale - 1) * lift.value },
+        { rotate: `${rotation * lift.value}deg` },
+      ],
+    }),
+    [scale, rotation, opacity]
+  );
 
   return (
     <Animated.View
