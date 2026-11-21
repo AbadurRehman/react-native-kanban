@@ -20,7 +20,6 @@ import {
 import Animated, {
   scrollTo,
   useAnimatedRef,
-  useAnimatedReaction,
   useAnimatedStyle,
   useFrameCallback,
   useSharedValue,
@@ -31,7 +30,7 @@ import {
   LIFT_SCALE,
   MAX_SCROLL_SPEED,
 } from '../dnd/constants';
-import { publishDragDebug, reportDragError } from '../dnd/debug';
+import { reportDragError } from '../dnd/debug';
 import {
   DragProvider,
   useDragContext,
@@ -180,14 +179,6 @@ export function Board<
   const space = useSharedValue(0);
   const cardGap = useSharedValue(theme.spacing.cardGap);
   const cardInset = useSharedValue(theme.spacing.columnPadding);
-  const debugUpdates = useSharedValue(0);
-  const debugFrames = useSharedValue(0);
-  const debugMapper = useSharedValue(0);
-  const debugError = useSharedValue<string | null>(null);
-  const debugTouches = useSharedValue(0);
-  const debugRaf = useSharedValue(0);
-  const debugStart = useSharedValue(0);
-  const debugEnd = useSharedValue('');
   useEffect(() => {
     cardGap.value = theme.spacing.cardGap;
     cardInset.value = theme.spacing.columnPadding;
@@ -220,14 +211,6 @@ export function Board<
       space,
       cardGap,
       cardInset,
-      debugUpdates,
-      debugFrames,
-      debugMapper,
-      debugError,
-      debugTouches,
-      debugRaf,
-      debugStart,
-      debugEnd,
     }),
     [
       boardRef,
@@ -255,24 +238,7 @@ export function Board<
       space,
       cardGap,
       cardInset,
-      debugUpdates,
-      debugFrames,
-      debugMapper,
-      debugError,
-      debugTouches,
-      debugRaf,
-      debugStart,
-      debugEnd,
     ]
-  );
-
-  // Diagnostics: echoes the frame count through the animated-style loop, so a
-  // stalled loop shows up as `mapper` falling behind `frames`.
-  useAnimatedReaction(
-    () => debugFrames.value,
-    (frames) => {
-      debugMapper.value = frames;
-    }
   );
 
   useEffect(() => {
@@ -394,12 +360,11 @@ export function Board<
           source,
           destination,
         };
-        publishDragDebug(shared);
         onEnd?.(event);
         setDrag(null);
       },
     }),
-    [resetDragValues, shared]
+    [resetDragValues]
   );
 
   const dragContext = useMemo<DragContextValue>(
@@ -442,10 +407,9 @@ export function Board<
     'worklet';
     if (!active.value || dropping.value) return;
     try {
-      debugFrames.value += 1;
       scrollBoardAtEdges(frame.timeSincePreviousFrame);
     } catch (error) {
-      reportDragError(shared, 'board auto-scroll', error);
+      reportDragError('board auto-scroll', error);
     }
   }, false);
 

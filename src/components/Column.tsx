@@ -101,55 +101,66 @@ function ColumnImpl<
   // Report where this column and its card viewport are, for hit testing.
   const columnTop = useRef(0);
   const viewportOffset = useRef(0);
+  // Everything reported so far, replayed when the registry effect re-runs.
+  const lastLayout = useRef<Parameters<typeof patchColumnLayout>[2]>({});
+  const patchLayout = useCallback(
+    (patch: Parameters<typeof patchColumnLayout>[2]) => {
+      lastLayout.current = { ...lastLayout.current, ...patch };
+      patchColumnLayout(layouts, columnKey, patch);
+    },
+    [layouts, columnKey]
+  );
   const handleColumnLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const { x, y, width: measuredWidth } = event.nativeEvent.layout;
       columnTop.current = y;
-      patchColumnLayout(layouts, columnKey, {
+      patchLayout({
         x,
         width: measuredWidth,
         viewportTop: y + viewportOffset.current,
       });
     },
-    [layouts, columnKey]
+    [patchLayout]
   );
   const handleViewportLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const { y, height } = event.nativeEvent.layout;
       viewportOffset.current = y;
-      patchColumnLayout(layouts, columnKey, {
+      patchLayout({
         viewportTop: columnTop.current + y,
         viewportHeight: height,
       });
     },
-    [layouts, columnKey]
+    [patchLayout]
   );
   const handleContentSizeChange = useCallback(
     (_width: number, height: number) => {
-      patchColumnLayout(layouts, columnKey, { contentHeight: height });
+      patchLayout({ contentHeight: height });
     },
-    [layouts, columnKey]
+    [patchLayout]
   );
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      patchColumnLayout(layouts, columnKey, {
+      patchLayout({
         scrollY: event.nativeEvent.contentOffset.y,
       });
     },
-    [layouts, columnKey]
+    [patchLayout]
   );
-  useEffect(
-    () => () => removeColumnLayout(layouts, columnKey),
-    [layouts, columnKey]
-  );
+  // Re-register when the effect re-runs (Fast Refresh, StrictMode): the
+  // cleanup removed this column and onLayout won't fire again for it.
+  useEffect(() => {
+    patchColumnLayout(layouts, columnKey, { ...lastLayout.current });
+    return () => removeColumnLayout(layouts, columnKey);
+  }, [layouts, columnKey]);
   // Card order for hit testing (positions are stacked from it).
   const cardOrder = useMemo(
     () => column.cards.map((card) => keyOf(card.id)),
     [column.cards]
   );
   useEffect(() => {
-    patchColumnLayout(layouts, columnKey, { order: cardOrder });
-  }, [layouts, columnKey, cardOrder]);
+    patchLayout({ order: cardOrder });
+  }, [patchLayout, cardOrder]);
   // Where the first card starts inside the scroll content (custom top padding).
   const contentTop = useMemo(() => {
     const content =
@@ -159,8 +170,8 @@ function ColumnImpl<
     return typeof top === 'number' ? top : 0;
   }, [base.columnContent, styles?.columnContent]);
   useEffect(() => {
-    patchColumnLayout(layouts, columnKey, { contentTop });
-  }, [layouts, columnKey, contentTop]);
+    patchLayout({ contentTop });
+  }, [patchLayout, contentTop]);
 
   // Auto-scroll this column while a card hovers near its top or bottom edge.
   function scrollColumnAtEdges(timeSincePreviousFrame: number | null) {
@@ -202,7 +213,7 @@ function ColumnImpl<
     try {
       scrollColumnAtEdges(frame.timeSincePreviousFrame);
     } catch (error) {
-      reportDragError(shared, 'column auto-scroll', error);
+      reportDragError('column auto-scroll', error);
     }
   }, false);
 
@@ -221,16 +232,16 @@ function ColumnImpl<
   const handleEmptyLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const { x, y, width: w, height } = event.nativeEvent.layout;
-      patchColumnLayout(layouts, columnKey, {
+      patchLayout({
         empty: { x, y, width: w, height },
       });
     },
-    [layouts, columnKey]
+    [patchLayout]
   );
   const isEmpty = column.cards.length === 0;
   useEffect(() => {
-    if (!isEmpty) patchColumnLayout(layouts, columnKey, { empty: null });
-  }, [isEmpty, layouts, columnKey]);
+    if (!isEmpty) patchLayout({ empty: null });
+  }, [isEmpty, patchLayout]);
   const { active, targetKey } = shared;
   const dropZoneStyle = useAnimatedStyle(() => ({
     opacity: withTiming(active.value && targetKey.value === columnKey ? 1 : 0, {

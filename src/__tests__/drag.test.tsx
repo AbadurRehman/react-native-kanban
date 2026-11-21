@@ -288,13 +288,21 @@ describe('drag and drop', () => {
 
     // The card floats above the board...
     expect(screen.getByTestId('kanban-drag-overlay')).toBeTruthy();
-    // ...while its original view stays mounted (its gesture keeps running),
-    // invisible and out of the layout.
+    // ...while its original view stays mounted and out of the layout. It must
+    // stay hit-testable (iOS cancels the gesture otherwise): only content fades.
     const original = screen.getByTestId('kanban-card-1');
-    expect(StyleSheet.flatten(original.props.style)).toMatchObject({
-      position: 'absolute',
+    const originalStyle = StyleSheet.flatten(original.props.style);
+    expect(originalStyle).toMatchObject({ position: 'absolute' });
+    expect(originalStyle.opacity).toBeUndefined();
+    expect(original.props.pointerEvents).toBeUndefined();
+    // The faded content is also hidden from screen readers.
+    const content = screen.getByTestId('kanban-content-1', {
+      includeHiddenElements: true,
+    });
+    expect(StyleSheet.flatten(content.props.style)).toMatchObject({
       opacity: 0,
     });
+    expect(content.props.accessibilityElementsHidden).toBe(true);
     // Landing spots: one before card 2 and one at the end of "todo", and the
     // empty "done" column becomes a drop zone.
     const todo = within(screen.getByTestId('kanban-column-todo'));
