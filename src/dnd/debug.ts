@@ -36,6 +36,12 @@ export interface DragDebugInfo {
   mapper: number;
   /** Last error caught on the UI thread, if any. */
   error: string | null;
+  /** Touch moves the gesture saw after the lift. */
+  touches: number;
+  /** Raw UI-thread animation frames during the drag. */
+  raf: number;
+  /** When and how the gesture ended, e.g. "1520ms ended". */
+  end: string;
 }
 
 /** Dev builds: logs the finished drag's stats and exposes them for the demo. */
@@ -46,6 +52,9 @@ export function publishDragDebug(s: DragShared): void {
     frames: s.debugFrames.value,
     mapper: s.debugMapper.value,
     error: s.debugError.value,
+    touches: s.debugTouches.value,
+    raf: s.debugRaf.value,
+    end: s.debugEnd.value,
   };
   (globalThis as { __KANBAN_DEBUG__?: DragDebugInfo }).__KANBAN_DEBUG__ = info;
   console.log(`[react-native-kanban] drag ${JSON.stringify(info)}`);

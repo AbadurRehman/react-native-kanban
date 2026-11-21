@@ -110,12 +110,15 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
             frames: number;
             mapper: number;
             error: string | null;
+            touches: number;
+            raf: number;
+            end: string;
           };
         }
       ).__KANBAN_DEBUG__;
       if (__DEV__ && stats) {
         setDragDebug(
-          `drag: ${stats.updates} moves · ${stats.frames} frames · ${stats.mapper} styled${stats.error ? ` · ERROR ${stats.error}` : ''}`
+          `drag: ${stats.updates} moves · ${stats.touches} touches · ${stats.raf} raf · ${stats.frames} frames · ${stats.mapper} styled · end ${stats.end}${stats.error ? ` · ERROR ${stats.error}` : ''}`
         );
       }
     },

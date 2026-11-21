@@ -57,6 +57,13 @@ export interface DragShared {
   debugFrames: SharedValue<number>;
   debugMapper: SharedValue<number>;
   debugError: SharedValue<string | null>;
+  /** Touch moves the card's gesture saw after the lift. */
+  debugTouches: SharedValue<number>;
+  /** Raw UI-thread animation frames during the drag. */
+  debugRaf: SharedValue<number>;
+  /** Lift time (ms) and how the gesture ended. */
+  debugStart: SharedValue<number>;
+  debugEnd: SharedValue<string>;
 }
 
 /** JS-thread callbacks, called from worklets with runOnJS. */
