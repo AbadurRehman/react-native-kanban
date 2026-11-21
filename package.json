@@ -1,6 +1,6 @@
 {
   "name": "react-native-kanban",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Customizable drag-and-drop Kanban board for React Native, built on Reanimated and Gesture Handler",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
@@ -15,17 +15,6 @@
   "files": [
     "src",
     "lib",
-    "android",
-    "ios",
-    "cpp",
-    "*.podspec",
-    "react-native.config.js",
-    "!ios/build",
-    "!android/build",
-    "!android/gradle",
-    "!android/gradlew",
-    "!android/gradlew.bat",
-    "!android/local.properties",
     "!**/__tests__",
     "!**/__fixtures__",
     "!**/__mocks__",
@@ -33,7 +22,8 @@
   ],
   "scripts": {
     "example": "yarn workspace react-native-kanban-example",
-    "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
+    "example:expo": "yarn workspace react-native-kanban-example-expo",
+    "clean": "del-cli example/android/build example/android/app/build example/ios/build example-expo/android example-expo/ios example-expo/dist lib",
     "prepare": "bob build",
     "typecheck": "tsc",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
@@ -42,6 +32,17 @@
   },
   "keywords": [
     "react-native",
+    "kanban",
+    "kanban-board",
+    "board",
+    "drag-and-drop",
+    "dnd",
+    "sortable",
+    "trello",
+    "react-kanban",
+    "reanimated",
+    "gesture-handler",
+    "expo",
     "ios",
     "android"
   ],
@@ -59,6 +60,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
+    "@babel/core": "^7.25.2",
     "@eslint/compat": "^2.1.1",
     "@eslint/eslintrc": "^3.3.7",
     "@eslint/js": "^9.39.5",
@@ -66,6 +68,7 @@
     "@react-native/babel-preset": "0.88.0",
     "@react-native/eslint-config": "0.88.0",
     "@react-native/jest-preset": "0.88.0",
+    "@react-native/metro-config": "0.88.0",
     "@release-it/conventional-changelog": "^12.0.2",
     "@types/react": "^19.2.0",
     "del-cli": "^8.0.1",
@@ -78,16 +81,23 @@
     "react": "19.3.0",
     "react-native": "0.88.0",
     "react-native-builder-bob": "^0.44.1",
+    "react-native-gesture-handler": "3.5.0",
+    "react-native-reanimated": "4.8.0",
+    "react-native-worklets": "0.14.0",
     "release-it": "^21.1.1",
     "turbo": "^2.11.10",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "react": "*",
-    "react-native": "*"
+    "react-native": "*",
+    "react-native-gesture-handler": ">=2.20.0",
+    "react-native-reanimated": ">=4.0.0",
+    "react-native-worklets": "*"
   },
   "workspaces": [
-    "example"
+    "example",
+    "example-expo"
   ],
   "packageManager": "yarn@4.18.1",
   "react-native-builder-bob": {
@@ -126,6 +136,7 @@
     },
     "modulePathIgnorePatterns": [
       "<rootDir>/example/node_modules",
+      "<rootDir>/example-expo/node_modules",
       "<rootDir>/lib/"
     ]
   },

@@ -7,17 +7,13 @@
       "env": ["ANDROID_HOME"],
       "inputs": [
         "package.json",
+        "app.json",
         "react-native.config.js",
-        "nitro.json",
         "android",
         "!android/build",
-        "cpp",
-        "src/**",
-        "example/package.json",
-        "example/android",
-        "!example/android/.gradle",
-        "!example/android/build",
-        "!example/android/app/build"
+        "!android/.gradle",
+        "!android/app/build",
+        "!android/app/.cxx"
       ],
       "outputs": []
     },
@@ -29,15 +25,11 @@
       ],
       "inputs": [
         "package.json",
-        "*.podspec",
-        "nitro.json",
+        "app.json",
+        "Gemfile",
         "ios",
-        "cpp",
-        "src/**",
-        "example/package.json",
-        "example/ios",
-        "!example/ios/build",
-        "!example/ios/Pods"
+        "!ios/build",
+        "!ios/Pods"
       ],
       "outputs": []
     }

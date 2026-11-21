@@ -24,6 +24,14 @@ export default defineConfig([
     },
   },
   {
-    ignores: ['node_modules/', 'lib/', 'example/dist/'],
+    ignores: [
+      'node_modules/',
+      'lib/',
+      'example/dist/',
+      'example-expo/dist/',
+      'example-expo/.expo/',
+      'example-expo/android/',
+      'example-expo/ios/',
+    ],
   },
 ]);
