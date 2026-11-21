@@ -107,3 +107,45 @@ export const initialBoard: KanbanBoard<Task> = {
     { id: 'done', title: 'Done', cards: [] },
   ],
 };
+
+const BENCH_COLUMNS = [
+  { id: 'backlog', title: 'Backlog' },
+  { id: 'todo', title: 'To do' },
+  { id: 'doing', title: 'In progress' },
+  { id: 'review', title: 'Review' },
+  { id: 'done', title: 'Done' },
+] as const;
+const BENCH_TAGS = ['ui', 'api', 'dnd', 'docs', 'perf', 'a11y'];
+const PRIORITIES: Task['priority'][] = ['high', 'medium', 'low'];
+
+/**
+ * A large board for benchmarks: `total` cards spread evenly over five
+ * columns. Cards vary like real ones (some descriptions, tags, assignees),
+ * so their heights differ. Always the same for the same `total`.
+ */
+export function makeBenchmarkBoard(total: number): KanbanBoard<Task> {
+  const perColumn = Math.ceil(total / BENCH_COLUMNS.length);
+  return {
+    columns: BENCH_COLUMNS.map((column, c) => ({
+      ...column,
+      cards: Array.from(
+        { length: Math.max(0, Math.min(perColumn, total - c * perColumn)) },
+        (_, i) => {
+          const n = c * perColumn + i + 1;
+          return {
+            id: `b-${n}`,
+            title: `Task ${n}`,
+            description:
+              n % 3 === 0
+                ? 'A longer card with a description that wraps onto a second line.'
+                : undefined,
+            priority: PRIORITIES[n % 3]!,
+            tags:
+              n % 2 === 0 ? [BENCH_TAGS[n % BENCH_TAGS.length]!] : undefined,
+            assignee: n % 4 === 0 ? 'AR' : undefined,
+          };
+        }
+      ),
+    })),
+  };
+}
