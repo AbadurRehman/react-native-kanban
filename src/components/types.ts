@@ -57,6 +57,44 @@ export interface ColumnRenderInfo {
   theme: KanbanTheme;
 }
 
+/** How a lifted card looks while it follows the finger. */
+export interface KanbanDragStyle {
+  /** Size of the floating card at full lift. `1.03` by default; `1` keeps its size. */
+  scale?: number;
+  /** Tilt at full lift, in degrees. `2` by default; `0` keeps it straight. */
+  rotation?: number;
+  /** Opacity of the floating card, from 0 to 1. `1` by default. */
+  opacity?: number;
+}
+
+/** Auto-scroll while a dragged card is near the edge of a column or the board. */
+export interface KanbanAutoScroll {
+  /**
+   * How close to an edge scrolling starts, in points. Defaults to 64 at the
+   * board's left and right edges and 56 at a column's top and bottom.
+   */
+  edge?: number;
+  /** Top speed, in points per 60 fps frame. `14` by default. */
+  speed?: number;
+}
+
+export interface PlaceholderRenderInfo<TCard> {
+  /** The card being dragged. */
+  card: TCard;
+  /** Height of the landing spot: the dragged card's height. */
+  height: number;
+  theme: KanbanTheme;
+}
+
+export interface CardDropCheck<TCard, TColumn> {
+  /** The card being dragged. */
+  card: TCard;
+  /** The column it was lifted from. */
+  fromColumn: TColumn;
+  /** The column it would be dropped into. */
+  toColumn: TColumn;
+}
+
 export interface CardDragStartEvent<TCard> {
   card: TCard;
   source: CardSource;
@@ -143,6 +181,34 @@ export interface BoardBaseProps<
 
   /** Turn off long-press dragging. */
   disableCardDrag?: boolean;
+  /**
+   * How long a card must be pressed before it lifts, in ms. `300` by default.
+   * `0` lifts it on the first movement instead; columns can then only be
+   * scrolled from outside the cards.
+   */
+  dragActivationDelay?: number;
+  /** Return `false` to lock a card in place. */
+  canDragCard?: (card: TCard, column: TColumn) => boolean;
+  /**
+   * Return `false` to keep a card out of a column. Checked once per column
+   * when a drag starts. A blocked column shows no landing spot, and dropping
+   * there puts the card back.
+   */
+  canDropCard?: (check: CardDropCheck<TCard, TColumn>) => boolean;
+  /** How the floating card looks: lift scale, tilt and opacity. */
+  dragStyle?: KanbanDragStyle;
+  /**
+   * Replace the floating card. By default it is the card itself, as drawn by
+   * `renderCard`.
+   */
+  renderDragPreview?: (card: TCard, info: CardRenderInfo<TColumn>) => ReactNode;
+  /**
+   * Replace the landing spot's dashed box. It is shown at the dragged card's
+   * height; fill it (`flex: 1`) to match.
+   */
+  renderPlaceholder?: (info: PlaceholderRenderInfo<TCard>) => ReactNode;
+  /** Scroll near edges while dragging. `true` by default; `false` turns it off. */
+  autoScroll?: boolean | KanbanAutoScroll;
   /** Called when a card lifts. A good place for haptic feedback. */
   onCardDragStart?: (event: CardDragStartEvent<TCard>) => void;
   /**

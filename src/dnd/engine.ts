@@ -35,20 +35,27 @@ export function updateDragTarget(
     s.fingerY.value - s.boardPageY.value - s.grabY.value + dragged.height / 2;
 
   const layouts = s.layouts.value;
-  const key = findTargetColumn(
+  let key = findTargetColumn(
     s.columnOrder.value,
     layouts,
     x + s.boardScrollX.value
   );
   if (key === null) return;
-  const column = layouts[key]!;
-  const cards = visibleCards(column, s.draggedKey.value, s.cardGap.value);
-  const index = insertIndexAt(
-    cards,
-    centerY - column.viewportTop + column.scrollY,
-    key === s.targetKey.value ? s.targetIndex.value : -1,
-    s.space.value
-  );
+  let index: number;
+  if (s.dropBlocked.value[key] && s.sourceKey.value !== null) {
+    // Not allowed here: the landing spot stays where the card came from.
+    key = s.sourceKey.value;
+    index = s.sourceIndex.value;
+  } else {
+    const column = layouts[key]!;
+    const cards = visibleCards(column, s.draggedKey.value, s.cardGap.value);
+    index = insertIndexAt(
+      cards,
+      centerY - column.viewportTop + column.scrollY,
+      key === s.targetKey.value ? s.targetIndex.value : -1,
+      s.space.value
+    );
+  }
 
   if (key !== s.targetKey.value || index !== s.targetIndex.value) {
     s.targetKey.value = key;
