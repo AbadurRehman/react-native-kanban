@@ -33,6 +33,8 @@ export interface ColumnLayout {
   cards: Record<string, Rect>;
   /** Card keys in data order. */
   order: string[];
+  /** Top padding of the column's scroll content (where the first card starts). */
+  contentTop: number;
   /** The "No cards" drop zone, when the column is empty. */
   empty: Rect | null;
 }
@@ -73,20 +75,19 @@ export function findTargetColumn(
 
 /**
  * A column's cards as they'd sit with the dragged card taken out, top to
- * bottom. Positions are stacked from the data order and measured heights
- * (not measured positions: on web, onLayout only fires when a view's size
- * changes, so positions go stale when cards above it move).
+ * bottom. Positions are stacked from the data order, measured heights and the
+ * content's top padding. Measured positions are never used: they go stale
+ * (web only reports size changes; on native, a card that moved while a drag
+ * was in progress gets no further layout event once it settles).
  */
 export function visibleCards(
-  column: Pick<ColumnLayout, 'cards' | 'order'>,
+  column: Pick<ColumnLayout, 'cards' | 'order' | 'contentTop'>,
   draggedKey: string | null,
   gap: number
 ): Rect[] {
   'worklet';
   const result: Rect[] = [];
-  const first =
-    column.order.length > 0 ? column.cards[column.order[0]!] : undefined;
-  let y = first ? first.y : 0;
+  let y = column.contentTop;
   for (let i = 0; i < column.order.length; i++) {
     const key = column.order[i]!;
     const card = column.cards[key];
@@ -97,16 +98,29 @@ export function visibleCards(
   return result;
 }
 
-/** Number of cards whose vertical midpoint is above `contentY`. */
+/**
+ * Insert index for a dragged card whose center is at `contentY`: the number of
+ * cards whose midpoint is above it, measured where the cards currently appear.
+ * When this column already shows the landing spot at `currentIndex`, cards at
+ * or after it are pushed down by `space`. This gives hysteresis: lifting a
+ * card never moves it, and the spot only moves once the dragged card's center
+ * passes a neighbour's visible middle.
+ *
+ * @param currentIndex the landing spot's index in this column, or -1 if the
+ *   column isn't the current target.
+ */
 export function insertIndexAt(
   sortedCards: readonly Rect[],
-  contentY: number
+  contentY: number,
+  currentIndex = -1,
+  space = 0
 ): number {
   'worklet';
   let index = 0;
   for (let i = 0; i < sortedCards.length; i++) {
     const card = sortedCards[i]!;
-    if (card.y + card.height / 2 < contentY) index++;
+    const shift = currentIndex >= 0 && i >= currentIndex ? space : 0;
+    if (card.y + shift + card.height / 2 < contentY) index++;
   }
   return index;
 }

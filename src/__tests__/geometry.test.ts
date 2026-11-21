@@ -20,6 +20,7 @@ const column = (x: number, width = 280): ColumnLayout => ({
   contentHeight: 400,
   cards: {},
   order: [],
+  contentTop: 0,
   empty: null,
 });
 
@@ -58,6 +59,7 @@ describe('findTargetColumn', () => {
 // Three cards with an 8pt gap: one (0–60), two (68–128), three (136–236).
 const column3 = {
   order: ['one', 'two', 'three'],
+  contentTop: 0,
   cards: {
     one: { x: 12, y: 0, width: 256, height: 60 },
     two: { x: 12, y: 68, width: 256, height: 60 },
@@ -76,21 +78,23 @@ describe('visibleCards', () => {
     expect(visibleCards(column3, 'two', 8).map((c) => c.y)).toEqual([0, 68]);
   });
 
-  it('ignores stale measured positions (web only reports size changes)', () => {
+  it('ignores measured positions entirely (they go stale)', () => {
+    // "two" moved to the top during a drag; its last layout event said y=68.
     const stale = {
       order: ['two', 'three'],
+      contentTop: 0,
       cards: {
-        two: { x: 12, y: 68, width: 256, height: 60 }, // really at the top now
-        three: { x: 12, y: 136, width: 256, height: 100 },
+        two: { x: 12, y: 68, width: 256, height: 60 },
+        three: { x: 12, y: 999, width: 256, height: 100 },
       },
     };
-    // Starts from the first card's offset, then stacks heights.
-    expect(visibleCards(stale, null, 8).map((c) => c.y)).toEqual([68, 136]);
-    const fresh = {
-      ...stale,
-      cards: { ...stale.cards, two: { ...stale.cards.two, y: 0 } },
-    };
-    expect(visibleCards(fresh, null, 8).map((c) => c.y)).toEqual([0, 68]);
+    expect(visibleCards(stale, null, 8).map((c) => c.y)).toEqual([0, 68]);
+  });
+
+  it('starts below custom top padding', () => {
+    expect(visibleCards({ ...column3, contentTop: 10 }, null, 8)[0]!.y).toBe(
+      10
+    );
   });
 
   it('skips cards that have not been measured yet', () => {
@@ -113,6 +117,29 @@ describe('insertIndexAt', () => {
 
   it('returns 0 for an empty column', () => {
     expect(insertIndexAt([], 999)).toBe(0);
+  });
+
+  it('does not move a tall card on lift when a short card sits below it', () => {
+    // A 116pt card on top of a 63pt card. Lifted, its center is at 58, which
+    // is below the short card's middle *if* the short card moved up into the
+    // gap (31). The landing spot is open at 0, so the short card still shows
+    // below it: its visible middle is 124 + 31 = 155.
+    const tall = {
+      order: ['tall', 'short'],
+      contentTop: 0,
+      cards: {
+        tall: { x: 12, y: 0, width: 256, height: 116 },
+        short: { x: 12, y: 124, width: 256, height: 63 },
+      },
+    };
+    const rest = visibleCards(tall, 'tall', 8);
+    const space = 116 + 8;
+    expect(insertIndexAt(rest, 58, 0, space)).toBe(0);
+    // It moves below once its center passes the short card's visible middle.
+    expect(insertIndexAt(rest, 156, 0, space)).toBe(1);
+    // ...and from there, needs to come back above that card's middle (31).
+    expect(insertIndexAt(rest, 100, 1, space)).toBe(1);
+    expect(insertIndexAt(rest, 30, 1, space)).toBe(0);
   });
 });
 

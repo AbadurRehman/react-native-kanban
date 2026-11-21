@@ -45,7 +45,9 @@ export function updateDragTarget(
   const cards = visibleCards(column, s.draggedKey.value, s.cardGap.value);
   const index = insertIndexAt(
     cards,
-    centerY - column.viewportTop + column.scrollY
+    centerY - column.viewportTop + column.scrollY,
+    key === s.targetKey.value ? s.targetIndex.value : -1,
+    s.space.value
   );
 
   if (key !== s.targetKey.value || index !== s.targetIndex.value) {

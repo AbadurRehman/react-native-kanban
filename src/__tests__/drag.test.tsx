@@ -69,16 +69,23 @@ const CARD_BOX: Record<number, { pageX: number; pageY: number }> = {
 const { __queueMeasure } = require('react-native-reanimated') as {
   __queueMeasure: (...boxes: object[]) => void;
 };
-const queueLift = (id: number) =>
+const queueLift = (
+  id: number,
+  box: { pageX: number; pageY: number; height?: number } = CARD_BOX[id]!
+) =>
   __queueMeasure(
-    { x: 0, y: 0, width: 256, height: 60, ...CARD_BOX[id] },
+    { x: 0, y: 0, width: 256, height: 60, ...box },
     { x: 0, y: 0, width: 800, height: 800, pageX: 0, pageY: 0 }
   );
 
 /** Long-press card `id`, move through `points`, then release. */
-async function drag(id: number, points: Array<[number, number]>) {
+async function drag(
+  id: number,
+  points: Array<[number, number]>,
+  box?: { pageX: number; pageY: number; height?: number }
+) {
   const [start] = points;
-  queueLift(id);
+  queueLift(id, box);
   await act(async () => {
     fireGestureHandler(getByGestureTestId(`kanban-card-drag-${id}`), [
       { state: State.BEGAN, absoluteX: start![0], absoluteY: start![1] },
@@ -203,6 +210,68 @@ describe('drag and drop', () => {
       />
     );
     expect(titlesIn('done')).toEqual(['1']);
+  });
+
+  it('does not move a tall card when it is lifted above a short one', async () => {
+    const onCardDragEnd = jest.fn();
+    await render(
+      <Board initialBoard={initial} onCardDragEnd={onCardDragEnd} />
+    );
+    await measureBoard();
+    // Card 1 is tall (116), card 2 short (60) right below it.
+    await layout('kanban-card-1', 12, 0, 256, 116);
+    await layout('kanban-card-2', 12, 124, 256, 60);
+
+    // Hold card 1 without moving, then release.
+    await drag(
+      1,
+      [
+        [100, 110],
+        [101, 112],
+      ],
+      { pageX: 28, pageY: 52, height: 116 }
+    );
+
+    expect(onCardDragEnd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destination: { toColumnId: 'todo', toPosition: 0 },
+      })
+    );
+    expect(titlesIn('todo')).toEqual(['1', '2']);
+  });
+
+  it('keeps hit testing right after a reorder, without new layout events', async () => {
+    const onCardDragEnd = jest.fn();
+    await render(
+      <Board initialBoard={initial} onCardDragEnd={onCardDragEnd} />
+    );
+    await measureBoard();
+
+    // Reorder: card 1 below card 2.
+    await drag(1, [
+      [100, 80],
+      [100, 170],
+    ]);
+    expect(titlesIn('todo')).toEqual(['2', '1']);
+
+    // No layout events fire after the drop (as on device when a card already
+    // reached its final spot during the drag). Hold card 1, now second, and
+    // release: it must stay second.
+    await drag(
+      1,
+      [
+        [100, 150],
+        [101, 151],
+      ],
+      { pageX: 28, pageY: 120 }
+    );
+    expect(onCardDragEnd).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        source: { fromColumnId: 'todo', fromPosition: 1 },
+        destination: { toColumnId: 'todo', toPosition: 1 },
+      })
+    );
+    expect(titlesIn('todo')).toEqual(['2', '1']);
   });
 
   it('keeps the dragged card mounted and adds landing spots', async () => {

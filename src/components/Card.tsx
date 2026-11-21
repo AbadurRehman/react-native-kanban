@@ -88,22 +88,22 @@ function CardItemImpl<
   const columnKey = keyOf(column.id);
 
   // Report this card's rect so drag hit tests can find drop positions.
-  const { layouts, active } = shared;
+  const { layouts } = shared;
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const { x, y, width, height } = event.nativeEvent.layout;
-      setCardLayout(layouts, active, columnKey, cardKey, {
+      setCardLayout(layouts, columnKey, cardKey, {
         x,
         y,
         width,
         height,
       });
     },
-    [layouts, active, columnKey, cardKey]
+    [layouts, columnKey, cardKey]
   );
   useEffect(
-    () => () => removeCardLayout(layouts, active, columnKey, cardKey),
-    [layouts, active, columnKey, cardKey]
+    () => () => removeCardLayout(layouts, columnKey, cardKey),
+    [layouts, columnKey, cardKey]
   );
 
   const pan = useMemo(() => {
