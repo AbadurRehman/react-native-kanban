@@ -63,7 +63,6 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
   const [dragMode, setDragMode] = useState<DragMode>('on');
   const [board, setBoard] = useState(initialBoard);
   const [lastEvent, setLastEvent] = useState('Long-press a card to drag it.');
-  const [dragDebug, setDragDebug] = useState<string | null>(null);
   const nextId = useRef(1);
 
   // Same theme the board resolves, so the demo chrome matches it.
@@ -102,25 +101,6 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
           ? `Put “${card.title}” back`
           : `Moved “${card.title}” to ${columnTitle(destination.toColumnId)}, position ${destination.toPosition + 1}`
       );
-      // Temporary iOS diagnostics (dev builds): what the drag saw.
-      const stats = (
-        globalThis as {
-          __KANBAN_DEBUG__?: {
-            updates: number;
-            frames: number;
-            mapper: number;
-            error: string | null;
-            touches: number;
-            raf: number;
-            end: string;
-          };
-        }
-      ).__KANBAN_DEBUG__;
-      if (__DEV__ && stats) {
-        setDragDebug(
-          `drag: ${stats.updates} moves · ${stats.touches} touches · ${stats.raf} raf · ${stats.frames} frames · ${stats.mapper} styled · end ${stats.end}${stats.error ? ` · ERROR ${stats.error}` : ''}`
-        );
-      }
     },
     [columnTitle]
   );
@@ -217,11 +197,6 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
       <Text style={chrome.hint} testID="demo-last-event" numberOfLines={1}>
         {lastEvent}
       </Text>
-      {dragDebug ? (
-        <Text style={chrome.hint} testID="demo-drag-debug" numberOfLines={2}>
-          {dragDebug}
-        </Text>
-      ) : null}
 
       <Board
         board={board}

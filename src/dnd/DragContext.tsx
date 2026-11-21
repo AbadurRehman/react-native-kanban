@@ -48,22 +48,6 @@ export interface DragShared {
   /** Theme values the geometry needs: gap between cards, card inset. */
   cardGap: SharedValue<number>;
   cardInset: SharedValue<number>;
-
-  /**
-   * Dev diagnostics for the current drag (see dnd/debug.ts): finger updates
-   * received, frames run, frames seen by the animated-style loop, last error.
-   */
-  debugUpdates: SharedValue<number>;
-  debugFrames: SharedValue<number>;
-  debugMapper: SharedValue<number>;
-  debugError: SharedValue<string | null>;
-  /** Touch moves the card's gesture saw after the lift. */
-  debugTouches: SharedValue<number>;
-  /** Raw UI-thread animation frames during the drag. */
-  debugRaf: SharedValue<number>;
-  /** Lift time (ms) and how the gesture ended. */
-  debugStart: SharedValue<number>;
-  debugEnd: SharedValue<string>;
 }
 
 /** JS-thread callbacks, called from worklets with runOnJS. */

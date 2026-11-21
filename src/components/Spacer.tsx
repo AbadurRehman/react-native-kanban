@@ -59,7 +59,7 @@ export function Spacer({
           height.value = withTiming(next, { duration: LAYOUT_MS });
         }
       } catch (error) {
-        reportDragError(shared, 'landing spot', error);
+        reportDragError('landing spot', error);
       }
     }
   );
