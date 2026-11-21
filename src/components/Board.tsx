@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import {
+  StyleSheet,
   useWindowDimensions,
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -32,7 +33,7 @@ import {
   type DragContextValue,
   type DragShared,
 } from '../dnd/DragContext';
-import { updateDragTarget } from '../dnd/engine';
+import { updateColumnTarget, updateDragTarget } from '../dnd/engine';
 import {
   resolveActivationDelay,
   resolveAutoScroll,
@@ -41,12 +42,13 @@ import {
 } from '../dnd/options';
 import {
   autoScrollSpeed,
+  buildColumnItems,
   clampScroll,
   keyOf,
   type ColumnLayout,
   type Rect,
 } from '../dnd/geometry';
-import { moveCard } from '../helpers';
+import { moveCard, moveColumn } from '../helpers';
 import {
   KanbanThemeProvider,
   useResolvedKanbanTheme,
@@ -55,18 +57,24 @@ import type { KanbanTheme } from '../theme/types';
 import type {
   CardDestination,
   CardSource,
+  ColumnDestination,
+  ColumnSource,
   KanbanBoard,
   KanbanCard,
   KanbanColumn,
 } from '../types';
 import { DefaultCard } from './Card';
 import { Column } from './Column';
+import { ColumnDragOverlay, type VisibleCardRange } from './ColumnDragOverlay';
+import { ColumnSpacer } from './ColumnSpacer';
 import { createBaseStyles, type KanbanBaseStyles } from './createBaseStyles';
 import type {
   BoardBaseProps,
   BoardProps,
   CardDragEndEvent,
   CardDragStartEvent,
+  ColumnDragEndEvent,
+  ColumnDragStartEvent,
   KanbanLabels,
   KanbanStyles,
 } from './types';
@@ -86,6 +94,15 @@ interface ActiveDrag<TCard, TColumn> {
   sourceIndex: number;
   width: number;
   height: number;
+}
+
+interface ActiveColumnDrag<TColumn> {
+  column: TColumn;
+  key: string;
+  sourceIndex: number;
+  width: number;
+  height: number;
+  cards: VisibleCardRange;
 }
 
 interface DropTarget {
@@ -136,6 +153,10 @@ export function Board<
     autoScroll,
     onCardDragStart,
     onCardDragEnd,
+    disableColumnDrag = false,
+    canDragColumn,
+    onColumnDragStart,
+    onColumnDragEnd,
     style,
     testID = 'kanban-board',
   } = props;
@@ -186,6 +207,20 @@ export function Board<
   const dropBlocked = useSharedValue<Record<string, boolean>>({});
   const draggedRect = useSharedValue<Rect | null>(null);
   const space = useSharedValue(0);
+  const contentLeft = useSharedValue(theme.spacing.boardPadding);
+  const columnStep = useSharedValue(0);
+  const columnWidthValue = useSharedValue(0);
+  const colActive = useSharedValue(false);
+  const colDropping = useSharedValue(false);
+  const colDraggedKey = useSharedValue<string | null>(null);
+  const colSourceIndex = useSharedValue(0);
+  const colTargetIndex = useSharedValue(0);
+  const colGrabX = useSharedValue(0);
+  const colGrabY = useSharedValue(0);
+  const colOverlayX = useSharedValue(0);
+  const colOverlayY = useSharedValue(0);
+  const colStartY = useSharedValue(0);
+  const colLift = useSharedValue(0);
   const cardGap = useSharedValue(theme.spacing.cardGap);
   const cardInset = useSharedValue(theme.spacing.columnPadding);
   useEffect(() => {
@@ -243,6 +278,20 @@ export function Board<
       scrollEdgeX,
       scrollEdgeY,
       scrollSpeed,
+      contentLeft,
+      columnStep,
+      columnWidth: columnWidthValue,
+      colActive,
+      colDropping,
+      colDraggedKey,
+      colSourceIndex,
+      colTargetIndex,
+      colGrabX,
+      colGrabY,
+      colOverlayX,
+      colOverlayY,
+      colStartY,
+      colLift,
     }),
     [
       boardRef,
@@ -275,6 +324,20 @@ export function Board<
       scrollEdgeX,
       scrollEdgeY,
       scrollSpeed,
+      contentLeft,
+      columnStep,
+      columnWidthValue,
+      colActive,
+      colDropping,
+      colDraggedKey,
+      colSourceIndex,
+      colTargetIndex,
+      colGrabX,
+      colGrabY,
+      colOverlayX,
+      colOverlayY,
+      colStartY,
+      colLift,
     ]
   );
 
@@ -289,6 +352,11 @@ export function Board<
   const dragRef = useRef<ActiveDrag<TCard, TColumn> | null>(null);
   const targetRef = useRef<DropTarget | null>(null);
   const dragCount = useRef(0);
+  // Column drags: same pattern, the landing index lives in a ref.
+  const [columnDrag, setColumnDrag] =
+    useState<ActiveColumnDrag<TColumn> | null>(null);
+  const columnDragRef = useRef<ActiveColumnDrag<TColumn> | null>(null);
+  const columnTargetRef = useRef(0);
 
   // Latest props for the stable drag actions below.
   const latest = useRef({
@@ -297,6 +365,8 @@ export function Board<
     canDropCard,
     onCardDragStart,
     onCardDragEnd,
+    onColumnDragStart,
+    onColumnDragEnd,
     onBoardChange: props.onBoardChange,
   });
   useLayoutEffect(() => {
@@ -306,6 +376,8 @@ export function Board<
       canDropCard,
       onCardDragStart,
       onCardDragEnd,
+      onColumnDragStart,
+      onColumnDragEnd,
       onBoardChange: props.onBoardChange,
     };
   });
@@ -318,6 +390,12 @@ export function Board<
     draggedKey.value = null;
     lift.value = 0;
   }, [active, dropping, draggedKey, lift]);
+  const resetColumnValues = useCallback(() => {
+    colActive.value = false;
+    colDropping.value = false;
+    colDraggedKey.value = null;
+    colLift.value = 0;
+  }, [colActive, colDropping, colDraggedKey, colLift]);
 
   const actions = useMemo<DragActions>(
     () => ({
@@ -413,8 +491,70 @@ export function Board<
         onEnd?.(event);
         setDrag(null);
       },
+
+      startColumn(columnKey, index, width, height, cards) {
+        const column = latest.current.board.columns[index];
+        if (!column || keyOf(column.id) !== columnKey) {
+          resetColumnValues();
+          return;
+        }
+        dragCount.current += 1;
+        columnDragRef.current = {
+          column,
+          key: columnKey,
+          sourceIndex: index,
+          width,
+          height,
+          cards,
+        };
+        columnTargetRef.current = index;
+        setColumnDrag(columnDragRef.current);
+        const event: ColumnDragStartEvent<TColumn> = {
+          column,
+          source: { fromPosition: index },
+        };
+        latest.current.onColumnDragStart?.(event);
+      },
+
+      setColumnTarget(index) {
+        if (columnDragRef.current) columnTargetRef.current = index;
+      },
+
+      finishColumn() {
+        const finished = columnDragRef.current;
+        columnDragRef.current = null;
+        resetColumnValues();
+        if (!finished) return;
+
+        const {
+          board: current,
+          isControlled: controlled,
+          onColumnDragEnd: onEnd,
+          onBoardChange,
+        } = latest.current;
+        const source: ColumnSource = { fromPosition: finished.sourceIndex };
+        const destination: ColumnDestination = {
+          toPosition: columnTargetRef.current,
+        };
+        // Batched into one render: the copy disappears in the frame the
+        // column lands in its new place.
+        if (!controlled) {
+          const next = moveColumn(current, source, destination);
+          if (next !== current) {
+            setInternalBoard(next);
+            onBoardChange?.(next);
+          }
+        }
+        const event: ColumnDragEndEvent<TColumn> = {
+          column: finished.column,
+          source,
+          destination,
+        };
+        onEnd?.(event);
+        setColumnDrag(null);
+      },
     }),
-    [resetDragValues, dropBlocked]
+    [resetDragValues, resetColumnValues, dropBlocked]
   );
 
   const activationDelay = resolveActivationDelay(dragActivationDelay);
@@ -431,7 +571,10 @@ export function Board<
 
   // --- Every frame while dragging: auto-scroll the board near its left or
   // right edge, then re-check the drop target under the (still) finger. ---
-  function scrollBoardAtEdges(timeSincePreviousFrame: number | null) {
+  function scrollBoardAtEdges(
+    timeSincePreviousFrame: number | null,
+    draggingColumn: boolean
+  ) {
     'worklet';
     const x = fingerX.value - boardPageX.value;
     const frames = (timeSincePreviousFrame ?? 16) / 16.67;
@@ -452,30 +595,39 @@ export function Board<
     if (next === boardScrollX.value) return;
     boardScrollX.value = next;
     scrollTo(boardScrollRef, next, 0, false);
-    updateDragTarget(shared, actions.setTarget);
+    if (draggingColumn) {
+      updateColumnTarget(shared, actions.setColumnTarget);
+    } else {
+      updateDragTarget(shared, actions.setTarget);
+    }
   }
 
   const dragFrame = useFrameCallback((frame) => {
     'worklet';
-    if (!active.value || dropping.value) return;
+    const card = active.value && !dropping.value;
+    const column = colActive.value && !colDropping.value;
+    if (!card && !column) return;
     try {
-      scrollBoardAtEdges(frame.timeSincePreviousFrame);
+      scrollBoardAtEdges(frame.timeSincePreviousFrame, column);
     } catch (error) {
       reportDragError('board auto-scroll', error);
     }
   }, false);
 
   const isDragging = drag !== null;
+  const isColumnDragging = columnDrag !== null;
   const { setActive: setDragFrameActive } = dragFrame;
   useEffect(() => {
-    setDragFrameActive(isDragging);
+    setDragFrameActive(isDragging || isColumnDragging);
+  }, [isDragging, isColumnDragging, setDragFrameActive]);
+  useEffect(() => {
     if (!isDragging) {
       // The drop has rendered and the spacers are gone: clear the target.
       targetKey.value = null;
       sourceKey.value = null;
       draggedRect.value = null;
     }
-  }, [isDragging, setDragFrameActive, targetKey, sourceKey, draggedRect]);
+  }, [isDragging, targetKey, sourceKey, draggedRect]);
 
   // --- Layout: measure the board for fullScreen width and column height ---
   const { width: windowWidth } = useWindowDimensions();
@@ -515,6 +667,36 @@ export function Board<
         (boardSize?.width ?? windowWidth) - theme.spacing.boardPadding * 2
       )
     : (columnWidth ?? DEFAULT_COLUMN_WIDTH[theme.density]);
+  // Where columns sit in the scroll content: positions come from these and
+  // the column order, never from measurements (see findTargetColumn).
+  const boardContentStyle = useMemo(
+    () => StyleSheet.flatten([base.boardContent, styles?.boardContent]) ?? {},
+    [base.boardContent, styles?.boardContent]
+  );
+  const boardLeft = numberOr(
+    boardContentStyle.paddingLeft ??
+      boardContentStyle.paddingHorizontal ??
+      boardContentStyle.padding,
+    0
+  );
+  const columnGap = numberOr(
+    boardContentStyle.columnGap ?? boardContentStyle.gap,
+    0
+  );
+  const step = resolvedColumnWidth + columnGap;
+  useEffect(() => {
+    contentLeft.value = boardLeft;
+    columnStep.value = step;
+    columnWidthValue.value = resolvedColumnWidth;
+  }, [
+    boardLeft,
+    step,
+    resolvedColumnWidth,
+    contentLeft,
+    columnStep,
+    columnWidthValue,
+  ]);
+
   const columnMaxHeight = boardSize
     ? Math.max(0, boardSize.height - theme.spacing.boardPadding * 2)
     : undefined;
@@ -535,7 +717,19 @@ export function Board<
   );
 
   const shouldSnap = snapToColumns ?? isFullScreen;
-  const snapInterval = resolvedColumnWidth + theme.spacing.columnGap;
+  const snapInterval = step;
+
+  // While a column is dragged, every other column gets a spacer in front of
+  // it (and one goes at the end) for the landing spot.
+  const columnItems = useMemo(
+    () =>
+      buildColumnItems(
+        board.columns,
+        isColumnDragging,
+        isColumnDragging ? columnDrag!.column.id : undefined
+      ),
+    [board.columns, isColumnDragging, columnDrag]
+  );
 
   return (
     <KanbanThemeProvider value={theme}>
@@ -554,7 +748,7 @@ export function Board<
               style={base.boardScroll}
               contentContainerStyle={[base.boardContent, styles?.boardContent]}
               showsHorizontalScrollIndicator={false}
-              scrollEnabled={!isDragging}
+              scrollEnabled={!isDragging && !isColumnDragging}
               scrollEventThrottle={16}
               onScroll={handleBoardScroll}
               onContentSizeChange={handleBoardContentSize}
@@ -563,7 +757,25 @@ export function Board<
               decelerationRate={shouldSnap ? 'fast' : 'normal'}
               disableIntervalMomentum={shouldSnap}
             >
-              {board.columns.map((column, index) => {
+              {columnItems.map((item) => {
+                if (item.type !== 'card') {
+                  const isEnd = item.type === 'end';
+                  return (
+                    <ColumnSpacer
+                      key={isEnd ? 'column-spacer:end' : item.key}
+                      slot={item.slot}
+                      initiallyOpen={item.slot === columnDrag!.sourceIndex}
+                      step={step}
+                      boxWidth={resolvedColumnWidth}
+                      boxHeight={columnDrag!.height}
+                      gap={columnGap}
+                      end={isEnd}
+                      base={base}
+                      styles={styles}
+                    />
+                  );
+                }
+                const { card: column, index, hidden: lifted } = item;
                 const columnKey = keyOf(column.id);
                 const isSource = drag?.sourceColumnKey === columnKey;
                 return (
@@ -590,6 +802,11 @@ export function Board<
                     draggedHeight={drag?.height ?? 0}
                     hiddenCardId={isSource ? drag!.card.id : undefined}
                     sourceSlot={isSource ? drag!.sourceIndex : undefined}
+                    columnDraggable={
+                      !disableColumnDrag && (canDragColumn?.(column) ?? true)
+                    }
+                    lifted={lifted}
+                    liftedLeft={boardLeft + index * step}
                   />
                 );
               })}
@@ -609,12 +826,35 @@ export function Board<
                 lift={liftStyle}
               />
             ) : null}
+
+            {columnDrag ? (
+              <ColumnDragOverlay
+                column={columnDrag.column}
+                index={columnDrag.sourceIndex}
+                width={columnDrag.width}
+                height={columnDrag.height}
+                cards={columnDrag.cards}
+                theme={theme}
+                base={base}
+                styles={styles}
+                labels={labels}
+                showCardCount={showCardCount}
+                renderCard={renderCard}
+                renderColumnHeader={renderColumnHeader}
+                renderColumnFooter={renderColumnFooter}
+                renderEmptyColumn={renderEmptyColumn}
+                lift={liftStyle}
+              />
+            ) : null}
           </Animated.View>
         </GestureHandlerRootView>
       </DragProvider>
     </KanbanThemeProvider>
   );
 }
+
+const numberOr = (value: unknown, fallback: number) =>
+  typeof value === 'number' ? value : fallback;
 
 interface DragOverlayProps<
   TCard extends KanbanCard,

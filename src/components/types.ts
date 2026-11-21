@@ -8,6 +8,8 @@ import type {
 import type {
   CardDestination,
   CardSource,
+  ColumnDestination,
+  ColumnSource,
   KanbanBoard,
   KanbanCard,
   KanbanColumn,
@@ -34,6 +36,10 @@ export interface KanbanStyles {
   placeholder?: StyleProp<ViewStyle>;
   /** Wrapper around the card that follows the finger while dragging. */
   dragOverlay?: StyleProp<ViewStyle>;
+  /** Marks where a dragged column will land. */
+  columnPlaceholder?: StyleProp<ViewStyle>;
+  /** The column copy that follows the finger while dragging a column. */
+  columnDragOverlay?: StyleProp<ViewStyle>;
 }
 
 /** User-facing strings, for translation. */
@@ -106,6 +112,21 @@ export interface CardDragEndEvent<TCard> extends CardDragStartEvent<TCard> {
    * was put back where it started.
    */
   destination: CardDestination;
+}
+
+export interface ColumnDragStartEvent<TColumn> {
+  column: TColumn;
+  source: ColumnSource;
+}
+
+export interface ColumnDragEndEvent<
+  TColumn,
+> extends ColumnDragStartEvent<TColumn> {
+  /**
+   * The column's new index. Equal to the source position when the column was
+   * put back where it started.
+   */
+  destination: ColumnDestination;
 }
 
 /**
@@ -216,6 +237,21 @@ export interface BoardBaseProps<
    * board here (`moveCard(board, source, destination)`), or the card goes back.
    */
   onCardDragEnd?: (event: CardDragEndEvent<TCard>) => void;
+
+  /** Turn off dragging columns by their header. */
+  disableColumnDrag?: boolean;
+  /**
+   * Return `false` to lock a column's header. Other columns can still be
+   * dropped before or after it.
+   */
+  canDragColumn?: (column: TColumn) => boolean;
+  /** Called when a column lifts. */
+  onColumnDragStart?: (event: ColumnDragStartEvent<TColumn>) => void;
+  /**
+   * Called when a dragged column is dropped. In controlled mode, update your
+   * board here (`moveColumn(board, source, destination)`), or it goes back.
+   */
+  onColumnDragEnd?: (event: ColumnDragEndEvent<TColumn>) => void;
 
   /** Style for the outer container. The board fills its parent by default. */
   style?: StyleProp<ViewStyle>;

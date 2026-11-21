@@ -1,6 +1,8 @@
 import { runOnJS } from 'react-native-reanimated';
 import type { DragShared } from './DragContext';
 import {
+  columnInsertIndex,
+  columnLeft,
   findTargetColumn,
   insertIndexAt,
   slotPosition,
@@ -38,7 +40,9 @@ export function updateDragTarget(
   let key = findTargetColumn(
     s.columnOrder.value,
     layouts,
-    x + s.boardScrollX.value
+    x + s.boardScrollX.value,
+    s.contentLeft.value,
+    s.columnStep.value
   );
   if (key === null) return;
   let index: number;
@@ -80,8 +84,63 @@ export function dropPosition(s: DragShared): { x: number; y: number } | null {
     x: column.empty?.x ?? s.cardInset.value,
     y: column.empty?.y ?? 0,
   });
+  const left = columnLeft(
+    s.columnOrder.value,
+    key,
+    s.contentLeft.value,
+    s.columnStep.value
+  );
   return {
-    x: column.x - s.boardScrollX.value + slot.x,
+    x: left - s.boardScrollX.value + slot.x,
     y: column.viewportTop - column.scrollY + slot.y,
+  };
+}
+
+/** Positions the floating column under the finger. */
+export function moveColumnOverlay(s: DragShared) {
+  'worklet';
+  s.colOverlayX.value = s.fingerX.value - s.boardPageX.value - s.colGrabX.value;
+  s.colOverlayY.value = s.fingerY.value - s.boardPageY.value - s.colGrabY.value;
+}
+
+/**
+ * Finds where the dragged column would land among the other columns and, when
+ * that changes, records it for the drop (column spacers react on the UI thread).
+ */
+export function updateColumnTarget(
+  s: DragShared,
+  setTarget: (index: number) => void
+) {
+  'worklet';
+  const centerX =
+    s.fingerX.value -
+    s.boardPageX.value -
+    s.colGrabX.value +
+    s.columnWidth.value / 2 +
+    s.boardScrollX.value;
+  const index = columnInsertIndex(
+    s.columnOrder.value.length - 1,
+    s.contentLeft.value,
+    s.columnStep.value,
+    s.columnWidth.value,
+    centerX,
+    s.colTargetIndex.value,
+    s.columnStep.value
+  );
+  if (index !== s.colTargetIndex.value) {
+    s.colTargetIndex.value = index;
+    runOnJS(setTarget)(index);
+  }
+}
+
+/** Where the dropped column lands, relative to the board viewport. */
+export function columnDropPosition(s: DragShared): { x: number; y: number } {
+  'worklet';
+  return {
+    x:
+      s.contentLeft.value +
+      s.colTargetIndex.value * s.columnStep.value -
+      s.boardScrollX.value,
+    y: s.colStartY.value,
   };
 }

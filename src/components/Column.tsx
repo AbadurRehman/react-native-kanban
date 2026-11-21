@@ -14,23 +14,37 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import {
+  Gesture,
+  GestureDetector,
+  ScrollView,
+} from 'react-native-gesture-handler';
 import Animated, {
+  measure,
+  runOnJS,
   scrollTo,
   useAnimatedRef,
   useAnimatedStyle,
   useFrameCallback,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { LAYOUT_MS } from '../dnd/constants';
+import { DROP_MS, LAYOUT_MS } from '../dnd/constants';
 import { useDragContext } from '../dnd/DragContext';
 import { reportDragError } from '../dnd/debug';
-import { updateDragTarget } from '../dnd/engine';
+import {
+  columnDropPosition,
+  moveColumnOverlay,
+  updateColumnTarget,
+  updateDragTarget,
+} from '../dnd/engine';
 import {
   autoScrollSpeed,
   buildColumnItems,
   clampScroll,
   keyOf,
+  visibleCards,
+  visibleRange,
 } from '../dnd/geometry';
 import { patchColumnLayout, removeColumnLayout } from '../dnd/registry';
 import type { KanbanTheme } from '../theme/types';
@@ -77,6 +91,52 @@ interface ColumnProps<
   hiddenCardId: KanbanId | undefined;
   /** Slot the dragged card left, open at lift (source column only). */
   sourceSlot: number | undefined;
+
+  /** The header can lift this column (`disableColumnDrag`, `canDragColumn`). */
+  columnDraggable: boolean;
+  /**
+   * This column is being dragged: it stays mounted (its header gesture keeps
+   * running) but leaves the layout, at `liftedLeft`, and turns invisible.
+   */
+  lifted: boolean;
+  liftedLeft: number;
+}
+
+interface ColumnHeaderProps {
+  column: KanbanColumn;
+  base: KanbanBaseStyles;
+  styles: KanbanStyles | undefined;
+  showCardCount: boolean;
+}
+
+/** The built-in column header: title plus card count. */
+export function ColumnHeader({
+  column,
+  base,
+  styles,
+  showCardCount,
+}: ColumnHeaderProps) {
+  return (
+    <View style={[base.columnHeader, styles?.columnHeader]}>
+      <Text
+        style={[base.columnTitle, styles?.columnTitle]}
+        numberOfLines={1}
+        accessibilityRole="header"
+      >
+        {column.title ?? String(column.id)}
+      </Text>
+      {showCardCount ? (
+        <View style={[base.countBadge, styles?.countBadge]}>
+          <Text
+            style={[base.countBadgeText, styles?.countBadgeText]}
+            testID={`kanban-column-count-${column.id}`}
+          >
+            {column.cards.length}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 function ColumnImpl<
@@ -104,14 +164,18 @@ function ColumnImpl<
   draggedHeight,
   hiddenCardId,
   sourceSlot,
+  columnDraggable,
+  lifted,
+  liftedLeft,
 }: ColumnProps<TCard, TColumn>) {
-  const { shared, actions } = useDragContext();
+  const { shared, actions, activationDelay } = useDragContext();
   const { layouts } = shared;
   const columnKey = keyOf(column.id);
   const scrollRef = useAnimatedRef<any>();
 
   // Report where this column and its card viewport are, for hit testing.
   const columnTop = useRef(0);
+  const columnHeight = useRef(0);
   const viewportOffset = useRef(0);
   // Everything reported so far, replayed when the registry effect re-runs.
   const lastLayout = useRef<Parameters<typeof patchColumnLayout>[2]>({});
@@ -124,8 +188,9 @@ function ColumnImpl<
   );
   const handleColumnLayout = useCallback(
     (event: LayoutChangeEvent) => {
-      const { x, y, width: measuredWidth } = event.nativeEvent.layout;
+      const { x, y, width: measuredWidth, height } = event.nativeEvent.layout;
       columnTop.current = y;
+      columnHeight.current = height;
       patchLayout({
         x,
         width: measuredWidth,
@@ -234,6 +299,108 @@ function ColumnImpl<
     setActive(isDragging);
   }, [isDragging, setActive]);
 
+  // Long-press the header to lift the whole column.
+  const columnRef = useAnimatedRef<Animated.View>();
+  const headerPan = useMemo(() => {
+    const s = shared;
+    const gesture = Gesture.Pan()
+      .withTestId(`kanban-column-drag-${String(column.id)}`)
+      .enabled(columnDraggable);
+    const activated =
+      activationDelay > 0
+        ? gesture.activateAfterLongPress(activationDelay)
+        : gesture.minDistance(4);
+    return activated
+      .onStart((event) => {
+        'worklet';
+        try {
+          if (s.active.value || s.colActive.value) return; // one drag at a time
+          const columnBox = measure(columnRef);
+          const boardBox = measure(s.boardRef);
+          if (!columnBox || !boardBox) return;
+
+          s.boardPageX.value = boardBox.pageX;
+          s.boardPageY.value = boardBox.pageY;
+          s.fingerX.value = event.absoluteX;
+          s.fingerY.value = event.absoluteY;
+          s.colGrabX.value = event.absoluteX - columnBox.pageX;
+          s.colGrabY.value = event.absoluteY - columnBox.pageY;
+          s.colOverlayX.value = columnBox.pageX - boardBox.pageX;
+          s.colOverlayY.value = columnBox.pageY - boardBox.pageY;
+          s.colStartY.value = s.colOverlayY.value;
+          s.colDraggedKey.value = columnKey;
+          s.colSourceIndex.value = index;
+          s.colTargetIndex.value = index;
+          s.colDropping.value = false;
+          s.colActive.value = true;
+          s.colLift.value = withSpring(1, { damping: 18, stiffness: 260 });
+
+          // The cards in view, for the floating copy.
+          const layout = s.layouts.value[columnKey];
+          const range = layout
+            ? visibleRange(
+                visibleCards(layout, null, s.cardGap.value),
+                layout.scrollY,
+                layout.viewportHeight
+              )
+            : { first: -1, last: -1, offset: 0 };
+          runOnJS(actions.startColumn)(
+            columnKey,
+            index,
+            columnBox.width,
+            columnBox.height,
+            range
+          );
+        } catch (error) {
+          reportDragError('column drag start', error);
+        }
+      })
+      .onUpdate((event) => {
+        'worklet';
+        if (s.colDraggedKey.value !== columnKey || s.colDropping.value) return;
+        try {
+          s.fingerX.value = event.absoluteX;
+          s.fingerY.value = event.absoluteY;
+          moveColumnOverlay(s);
+          updateColumnTarget(s, actions.setColumnTarget);
+        } catch (error) {
+          reportDragError('column drag update', error);
+        }
+      })
+      .onFinalize(() => {
+        'worklet';
+        if (!s.colActive.value || s.colDropping.value) return;
+        if (s.colDraggedKey.value !== columnKey) return;
+        s.colDropping.value = true;
+
+        // Glide into the landing spot, then commit the move on the JS thread.
+        try {
+          const landing = columnDropPosition(s);
+          s.colLift.value = withTiming(0, { duration: DROP_MS });
+          s.colOverlayX.value = withTiming(landing.x, { duration: DROP_MS });
+          s.colOverlayY.value = withTiming(
+            landing.y,
+            { duration: DROP_MS },
+            () => {
+              runOnJS(actions.finishColumn)();
+            }
+          );
+        } catch (error) {
+          reportDragError('column drop', error);
+          runOnJS(actions.finishColumn)(); // never leave a drag hanging
+        }
+      });
+  }, [
+    shared,
+    actions,
+    activationDelay,
+    columnDraggable,
+    columnRef,
+    column.id,
+    columnKey,
+    index,
+  ]);
+
   const items = useMemo(
     () => buildColumnItems(column.cards, isDragging, hiddenCardId),
     [column.cards, isDragging, hiddenCardId]
@@ -268,8 +435,14 @@ function ColumnImpl<
     theme,
   };
 
+  // While lifted, the column keeps its place and size out of the layout flow
+  // and only its content fades: iOS cancels a gesture whose view stops
+  // accepting touches (opacity 0, pointerEvents none).
+  const hide = lifted ? columnStyles.invisible : undefined;
   return (
-    <View
+    <Animated.View
+      ref={columnRef}
+      collapsable={false}
       testID={`kanban-column-${column.id}`}
       onLayout={handleColumnLayout}
       style={[
@@ -277,38 +450,50 @@ function ColumnImpl<
         fill ? null : [base.columnContentHeight, { maxHeight }],
         { width },
         styles?.column,
+        lifted
+          ? [
+              columnStyles.lifted,
+              {
+                left: liftedLeft,
+                top: columnTop.current,
+                height: columnHeight.current,
+              },
+            ]
+          : null,
       ]}
     >
-      {renderColumnHeader ? (
-        renderColumnHeader(column, info)
-      ) : (
-        <View style={[base.columnHeader, styles?.columnHeader]}>
-          <Text
-            style={[base.columnTitle, styles?.columnTitle]}
-            numberOfLines={1}
-            accessibilityRole="header"
+      <GestureDetector gesture={headerPan}>
+        <Animated.View
+          testID={`kanban-column-header-${column.id}`}
+          collapsable={false}
+        >
+          <View
+            style={hide}
+            accessibilityElementsHidden={lifted}
+            importantForAccessibility={lifted ? 'no-hide-descendants' : 'auto'}
           >
-            {column.title ?? String(column.id)}
-          </Text>
-          {showCardCount ? (
-            <View style={[base.countBadge, styles?.countBadge]}>
-              <Text
-                style={[base.countBadgeText, styles?.countBadgeText]}
-                testID={`kanban-column-count-${column.id}`}
-              >
-                {column.cards.length}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      )}
+            {renderColumnHeader ? (
+              renderColumnHeader(column, info)
+            ) : (
+              <ColumnHeader
+                column={column}
+                base={base}
+                styles={styles}
+                showCardCount={showCardCount}
+              />
+            )}
+          </View>
+        </Animated.View>
+      </GestureDetector>
 
       {/* Measured wrapper: the ScrollView may sit inside a gesture wrapper
           (e.g. on web), which would skew its own onLayout coordinates. */}
       <View
         testID={`kanban-column-viewport-${column.id}`}
-        style={fill ? base.columnScrollFill : base.columnScroll}
+        style={[fill ? base.columnScrollFill : base.columnScroll, hide]}
         onLayout={handleViewportLayout}
+        accessibilityElementsHidden={lifted}
+        importantForAccessibility={lifted ? 'no-hide-descendants' : 'auto'}
       >
         <ScrollView
           ref={scrollRef}
@@ -383,12 +568,29 @@ function ColumnImpl<
       </View>
 
       {renderColumnFooter ? (
-        <View style={[base.columnFooter, styles?.columnFooter]}>
+        <View
+          style={[base.columnFooter, styles?.columnFooter, hide]}
+          accessibilityElementsHidden={lifted}
+          importantForAccessibility={lifted ? 'no-hide-descendants' : 'auto'}
+        >
           {renderColumnFooter(column, info)}
         </View>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 
 export const Column = memo(ColumnImpl) as typeof ColumnImpl;
+
+const columnStyles = StyleSheet.create({
+  // Out of the layout flow (absolute children don't take part in `gap`), with
+  // no background or shadow left behind; `left`/`top` keep it where it was.
+  lifted: {
+    position: 'absolute',
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  invisible: { opacity: 0 },
+});

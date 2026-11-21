@@ -127,7 +127,7 @@ function CardItemImpl<
       .onStart((event) => {
         'worklet';
         try {
-          if (s.active.value) return; // one drag at a time
+          if (s.active.value || s.colActive.value) return; // one drag at a time
           const cardBox = measure(cardRef);
           const boardBox = measure(s.boardRef);
           if (!cardBox || !boardBox) return;
