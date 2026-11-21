@@ -127,6 +127,22 @@ describe('<Board />', () => {
     );
   });
 
+  it('sizes columns to their content and caps them at the board height', async () => {
+    await render(<Board board={board} />);
+    await layoutBoard(400);
+    const column = styleOf('kanban-column-todo');
+    expect(column.alignSelf).toBe('flex-start');
+    expect(column.maxHeight).toBe(800 - lightTheme.spacing.boardPadding * 2);
+  });
+
+  it("stretches columns to the board height with columnHeight='fill'", async () => {
+    await render(<Board board={board} columnHeight="fill" />);
+    await layoutBoard(400);
+    const column = styleOf('kanban-column-todo');
+    expect(column.alignSelf).toBeUndefined();
+    expect(column.maxHeight).toBeUndefined();
+  });
+
   it('applies the theme and per-part style overrides', async () => {
     await render(
       <Board

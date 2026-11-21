@@ -16,6 +16,7 @@ const lightColors: KanbanThemeColors = {
   countBadgeText: '#475569',
   border: '#E2E8F0',
   accent: '#4F46E5',
+  onAccent: '#FFFFFF',
   emptyColumnText: '#94A3B8',
   placeholder: 'rgba(79, 70, 229, 0.10)',
 };
@@ -27,10 +28,11 @@ const darkColors: KanbanThemeColors = {
   card: '#1E293B',
   cardTitle: '#F1F5F9',
   cardDescription: '#94A3B8',
-  countBadge: '#1E293B',
+  countBadge: '#2B3A52',
   countBadgeText: '#CBD5E1',
-  border: '#273449',
+  border: '#2B3A52',
   accent: '#818CF8',
+  onAccent: '#0B1120',
   emptyColumnText: '#64748B',
   placeholder: 'rgba(129, 140, 248, 0.14)',
 };

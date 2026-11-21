@@ -10,7 +10,9 @@ export type KanbanBaseStyles = {
   columnTitle: TextStyle;
   countBadge: ViewStyle;
   countBadgeText: TextStyle;
+  columnContentHeight: ViewStyle;
   columnScroll: ViewStyle;
+  columnScrollFill: ViewStyle;
   columnContent: ViewStyle;
   columnFooter: ViewStyle;
   card: ViewStyle;
@@ -66,7 +68,14 @@ export function createBaseStyles(theme: KanbanTheme): KanbanBaseStyles {
       ...typography.countBadge,
       color: colors.countBadgeText,
     },
+    columnContentHeight: {
+      alignSelf: 'flex-start',
+    },
     columnScroll: {
+      flexGrow: 0,
+      flexShrink: 1,
+    },
+    columnScrollFill: {
       flex: 1,
     },
     columnContent: {

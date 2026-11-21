@@ -66,6 +66,12 @@ export interface BoardProps<
    * (great on phones). Defaults to 280 (240 when compact).
    */
   columnWidth?: number | 'fullScreen';
+  /**
+   * `'content'` (default): columns are as tall as their cards and scroll once
+   * they reach the bottom of the board, keeping the footer under the last card.
+   * `'fill'`: every column stretches to the full board height.
+   */
+  columnHeight?: 'content' | 'fill';
   /** Snap scrolling to columns. Defaults to `true` for `'fullScreen'`. */
   snapToColumns?: boolean;
   /** Show the card count next to each column title. Defaults to `true`. */
