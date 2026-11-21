@@ -18,6 +18,9 @@ interface ColumnProps<
   column: TColumn;
   index: number;
   width: number;
+  /** Tallest the column can be in 'content' mode (board height minus padding). */
+  maxHeight: number | undefined;
+  fill: boolean;
   theme: KanbanTheme;
   base: KanbanBaseStyles;
   styles: KanbanStyles | undefined;
@@ -37,6 +40,8 @@ function ColumnImpl<
   column,
   index,
   width,
+  maxHeight,
+  fill,
   theme,
   base,
   styles,
@@ -57,7 +62,12 @@ function ColumnImpl<
   return (
     <View
       testID={`kanban-column-${column.id}`}
-      style={[base.column, { width }, styles?.column]}
+      style={[
+        base.column,
+        fill ? null : [base.columnContentHeight, { maxHeight }],
+        { width },
+        styles?.column,
+      ]}
     >
       {renderColumnHeader ? (
         renderColumnHeader(column, info)
@@ -84,7 +94,7 @@ function ColumnImpl<
       )}
 
       <ScrollView
-        style={base.columnScroll}
+        style={fill ? base.columnScrollFill : base.columnScroll}
         contentContainerStyle={[base.columnContent, styles?.columnContent]}
         showsVerticalScrollIndicator={false}
       >

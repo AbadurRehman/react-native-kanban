@@ -38,6 +38,7 @@ export function Board<
   theme: themeProp,
   density,
   columnWidth,
+  columnHeight = 'content',
   snapToColumns,
   showCardCount = true,
   styles,
@@ -62,19 +63,34 @@ export function Board<
     [emptyColumnLabel]
   );
 
-  // Measure the board so 'fullScreen' columns fit it exactly, even when the
-  // board doesn't span the whole window (tablets, split view, modals).
+  // Measure the board so 'fullScreen' columns fit its width exactly (even when
+  // it doesn't span the whole window: tablets, split view, modals) and
+  // 'content'-height columns stop growing at its bottom edge.
   const { width: windowWidth } = useWindowDimensions();
-  const [boardWidth, setBoardWidth] = useState<number | null>(null);
+  const [boardSize, setBoardSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
-    const { width } = event.nativeEvent.layout;
-    setBoardWidth((previous) => (previous === width ? previous : width));
+    const { width, height } = event.nativeEvent.layout;
+    setBoardSize((previous) =>
+      previous?.width === width && previous.height === height
+        ? previous
+        : { width, height }
+    );
   }, []);
 
   const isFullScreen = columnWidth === 'fullScreen';
   const resolvedColumnWidth = isFullScreen
-    ? Math.max(0, (boardWidth ?? windowWidth) - theme.spacing.boardPadding * 2)
+    ? Math.max(
+        0,
+        (boardSize?.width ?? windowWidth) - theme.spacing.boardPadding * 2
+      )
     : (columnWidth ?? DEFAULT_COLUMN_WIDTH[theme.density]);
+
+  const columnMaxHeight = boardSize
+    ? Math.max(0, boardSize.height - theme.spacing.boardPadding * 2)
+    : undefined;
 
   const shouldSnap = snapToColumns ?? isFullScreen;
   const snapInterval = resolvedColumnWidth + theme.spacing.columnGap;
@@ -98,6 +114,8 @@ export function Board<
               column={column}
               index={index}
               width={resolvedColumnWidth}
+              maxHeight={columnMaxHeight}
+              fill={columnHeight === 'fill'}
               theme={theme}
               base={base}
               styles={styles}

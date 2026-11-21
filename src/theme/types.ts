@@ -21,6 +21,8 @@ export interface KanbanThemeColors {
   border: string;
   /** Brand color for interactive bits (buttons, focus, drop indicators). */
   accent: string;
+  /** Text and icons drawn on top of `accent`. */
+  onAccent: string;
   emptyColumnText: string;
   /** Fill for the drop placeholder while dragging (used from 0.2.0). */
   placeholder: string;
