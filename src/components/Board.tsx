@@ -153,6 +153,8 @@ export function Board<
     autoScroll,
     onCardDragStart,
     onCardDragEnd,
+    virtualize = true,
+    estimatedCardHeight,
     disableColumnDrag = false,
     canDragColumn,
     onColumnDragStart,
@@ -807,6 +809,8 @@ export function Board<
                     }
                     lifted={lifted}
                     liftedLeft={boardLeft + index * step}
+                    virtualize={virtualize}
+                    estimatedCardHeight={estimatedCardHeight}
                   />
                 );
               })}

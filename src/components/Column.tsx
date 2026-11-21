@@ -2,14 +2,17 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from 'react';
 import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -41,6 +44,7 @@ import {
 import {
   autoScrollSpeed,
   buildColumnItems,
+  cardWindow,
   clampScroll,
   keyOf,
   visibleCards,
@@ -100,7 +104,15 @@ interface ColumnProps<
    */
   lifted: boolean;
   liftedLeft: number;
+
+  /** Render only the cards near the viewport (`virtualize`). */
+  virtualize: boolean;
+  /** Height assumed for cards not measured yet (`estimatedCardHeight`). */
+  estimatedCardHeight: number | undefined;
 }
+
+/** Assumed height of a card before any card in the column was measured. */
+const DEFAULT_CARD_HEIGHT = 72;
 
 interface ColumnHeaderProps {
   column: KanbanColumn;
@@ -167,6 +179,8 @@ function ColumnImpl<
   columnDraggable,
   lifted,
   liftedLeft,
+  virtualize,
+  estimatedCardHeight,
 }: ColumnProps<TCard, TColumn>) {
   const { shared, actions, activationDelay } = useDragContext();
   const { layouts } = shared;
@@ -177,6 +191,10 @@ function ColumnImpl<
   const columnTop = useRef(0);
   const columnHeight = useRef(0);
   const viewportOffset = useRef(0);
+  const viewportHeight = useRef(0);
+  const scrollY = useRef(0);
+  // Set below, once the window logic exists; called from the handlers here.
+  const updateWindowRef = useRef<(force: boolean) => void>(() => {});
   // Everything reported so far, replayed when the registry effect re-runs.
   const lastLayout = useRef<Parameters<typeof patchColumnLayout>[2]>({});
   const patchLayout = useCallback(
@@ -203,10 +221,14 @@ function ColumnImpl<
     (event: LayoutChangeEvent) => {
       const { y, height } = event.nativeEvent.layout;
       viewportOffset.current = y;
+      const resized = viewportHeight.current !== height;
+      viewportHeight.current = height;
       patchLayout({
         viewportTop: columnTop.current + y,
         viewportHeight: height,
       });
+      // The first window was sized for a whole screen: fit it now.
+      updateWindowRef.current(resized);
     },
     [patchLayout]
   );
@@ -218,9 +240,9 @@ function ColumnImpl<
   );
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      patchLayout({
-        scrollY: event.nativeEvent.contentOffset.y,
-      });
+      scrollY.current = event.nativeEvent.contentOffset.y;
+      patchLayout({ scrollY: scrollY.current });
+      updateWindowRef.current(false);
     },
     [patchLayout]
   );
@@ -249,6 +271,115 @@ function ColumnImpl<
   useEffect(() => {
     patchLayout({ contentTop });
   }, [patchLayout, contentTop]);
+
+  // --- Windowing: only the cards near the viewport are rendered. The ones
+  // above and below are replaced by empty space of their (measured or
+  // estimated) height, so the scroll content keeps its full size. ---
+  const cardGap = theme.spacing.cardGap;
+  const { height: screenHeight } = useWindowDimensions();
+  const heights = useRef(new Map<string, number>());
+  const hiddenKey = hiddenCardId !== undefined ? keyOf(hiddenCardId) : null;
+  const estimateHeight = useCallback(() => {
+    if (estimatedCardHeight !== undefined && estimatedCardHeight > 0) {
+      return estimatedCardHeight;
+    }
+    if (heights.current.size === 0) return DEFAULT_CARD_HEIGHT;
+    let total = 0;
+    heights.current.forEach((height) => {
+      total += height;
+    });
+    return total / heights.current.size;
+  }, [estimatedCardHeight]);
+  const flowHeights = useCallback(() => {
+    const estimate = estimateHeight();
+    return cardOrder.map((key) =>
+      key === hiddenKey ? null : (heights.current.get(key) ?? estimate)
+    );
+  }, [cardOrder, hiddenKey, estimateHeight]);
+  // Render a screen ahead above and below; re-window once half of that is
+  // used up, so scrolling re-renders the column only now and then.
+  const computeWindow = useCallback(
+    (overscanScreens: number) => {
+      // Until the board is measured a column can be as tall as its content:
+      // never window more than a screen.
+      const viewport = Math.min(
+        viewportHeight.current || screenHeight,
+        screenHeight
+      );
+      return cardWindow(
+        flowHeights(),
+        cardGap,
+        contentTop,
+        scrollY.current,
+        viewport,
+        viewport * overscanScreens
+      );
+    },
+    [flowHeights, cardGap, contentTop, screenHeight]
+  );
+  const allCards = useMemo(
+    () => ({ first: 0, last: column.cards.length - 1 }),
+    [column.cards.length]
+  );
+  const [range, setRange] = useState(() => {
+    const { first, last } = computeWindow(1);
+    return { first, last };
+  });
+  const rangeRef = useRef(range);
+  rangeRef.current = range;
+  const estimateSent = useRef(-1);
+  const updateWindow = useCallback(
+    (force: boolean) => {
+      const estimate = estimateHeight();
+      if (estimate !== estimateSent.current) {
+        estimateSent.current = estimate;
+        patchLayout({ estimate });
+      }
+      if (!virtualize) return;
+      const current = rangeRef.current;
+      const needed = computeWindow(0.5);
+      const covered =
+        needed.first >= current.first && needed.last <= current.last;
+      if (covered && !force) return;
+      const { first, last } = computeWindow(1);
+      if (first !== current.first || last !== current.last) {
+        rangeRef.current = { first, last };
+        setRange(rangeRef.current);
+      }
+    },
+    [virtualize, computeWindow, estimateHeight, patchLayout]
+  );
+  updateWindowRef.current = updateWindow;
+  // Re-window when the cards, the dragged card or the spacing change.
+  useLayoutEffect(() => {
+    updateWindow(true);
+  }, [updateWindow]);
+  // New measurements can let more cards fit: check once per frame at most.
+  const windowCheck = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (windowCheck.current !== null) {
+        cancelAnimationFrame(windowCheck.current);
+      }
+    },
+    []
+  );
+  const handleCardHeight = useCallback((cardKey: string, height: number) => {
+    if (heights.current.get(cardKey) === height) return;
+    heights.current.set(cardKey, height);
+    if (windowCheck.current !== null) return;
+    windowCheck.current = requestAnimationFrame(() => {
+      windowCheck.current = null;
+      updateWindowRef.current(false);
+    });
+  }, []);
+  // Forget cards that left the column.
+  useEffect(() => {
+    const keys = new Set(cardOrder);
+    heights.current.forEach((_height, key) => {
+      if (!keys.has(key)) heights.current.delete(key);
+    });
+  }, [cardOrder]);
 
   // Auto-scroll this column while a card hovers near its top or bottom edge.
   function scrollColumnAtEdges(timeSincePreviousFrame: number | null) {
@@ -337,9 +468,9 @@ function ColumnImpl<
 
           // The cards in view, for the floating copy.
           const layout = s.layouts.value[columnKey];
-          const range = layout
+          const inView = layout
             ? visibleRange(
-                visibleCards(layout, null, s.cardGap.value),
+                visibleCards(layout, null, s.cardGap.value, s.cardInset.value),
                 layout.scrollY,
                 layout.viewportHeight
               )
@@ -349,7 +480,7 @@ function ColumnImpl<
             index,
             columnBox.width,
             columnBox.height,
-            range
+            inView
           );
         } catch (error) {
           reportDragError('column drag start', error);
@@ -401,10 +532,23 @@ function ColumnImpl<
     index,
   ]);
 
+  const shown = virtualize ? range : allCards;
   const items = useMemo(
-    () => buildColumnItems(column.cards, isDragging, hiddenCardId),
-    [column.cards, isDragging, hiddenCardId]
+    () => buildColumnItems(column.cards, isDragging, hiddenCardId, shown),
+    [column.cards, isDragging, hiddenCardId, shown]
   );
+  // Space for the cards above and below the window.
+  let spaceAbove = 0;
+  let spaceBelow = 0;
+  if (virtualize) {
+    const flow = flowHeights();
+    for (let i = 0; i < flow.length; i++) {
+      const height = flow[i];
+      if (height === null || height === undefined) continue;
+      if (i < shown.first) spaceAbove += height + cardGap;
+      else if (i > shown.last) spaceBelow += height + cardGap;
+    }
+  }
 
   // An empty column is itself the drop zone: report it and light it up when
   // a dragged card hovers over this column.
@@ -427,7 +571,7 @@ function ColumnImpl<
       duration: LAYOUT_MS,
     }),
   }));
-  const gap = theme.spacing.cardGap;
+  const gap = cardGap;
 
   const info: ColumnRenderInfo = {
     index,
@@ -528,41 +672,57 @@ function ColumnImpl<
               ) : null}
             </View>
           ) : (
-            items.map((item) => {
-              if (item.type === 'card') {
+            <>
+              {spaceAbove > 0 ? (
+                // The column's gap follows it: leave one out.
+                <View
+                  testID="kanban-cards-above"
+                  style={{ height: spaceAbove - gap }}
+                />
+              ) : null}
+              {items.map((item) => {
+                if (item.type === 'card') {
+                  return (
+                    <CardItem
+                      key={keyOf(item.card.id)}
+                      card={item.card}
+                      column={column}
+                      index={item.index}
+                      hidden={item.hidden}
+                      draggable={canDragCard?.(item.card, column) ?? true}
+                      theme={theme}
+                      base={base}
+                      styles={styles}
+                      renderCard={renderCard}
+                      onCardPress={onCardPress}
+                      onHeight={handleCardHeight}
+                    />
+                  );
+                }
+                const isEnd = item.type === 'end';
                 return (
-                  <CardItem
-                    key={keyOf(item.card.id)}
-                    card={item.card}
-                    column={column}
-                    index={item.index}
-                    hidden={item.hidden}
-                    draggable={canDragCard?.(item.card, column) ?? true}
-                    theme={theme}
+                  <Spacer
+                    key={isEnd ? 'spacer:end' : item.key}
+                    columnKey={columnKey}
+                    slot={item.slot}
+                    initiallyOpen={item.slot === sourceSlot}
+                    boxHeight={draggedHeight}
+                    gap={gap}
+                    end={isEnd}
                     base={base}
                     styles={styles}
-                    renderCard={renderCard}
-                    onCardPress={onCardPress}
-                  />
+                  >
+                    {placeholder}
+                  </Spacer>
                 );
-              }
-              const isEnd = item.type === 'end';
-              return (
-                <Spacer
-                  key={isEnd ? 'spacer:end' : item.key}
-                  columnKey={columnKey}
-                  slot={item.slot}
-                  initiallyOpen={item.slot === sourceSlot}
-                  boxHeight={draggedHeight}
-                  gap={gap}
-                  end={isEnd}
-                  base={base}
-                  styles={styles}
-                >
-                  {placeholder}
-                </Spacer>
-              );
-            })
+              })}
+              {spaceBelow > 0 ? (
+                <View
+                  testID="kanban-cards-below"
+                  style={{ height: spaceBelow - gap }}
+                />
+              ) : null}
+            </>
           )}
         </ScrollView>
       </View>

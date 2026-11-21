@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 import {
   autoScrollSpeed,
   buildColumnItems,
+  cardWindow,
   clampScroll,
   columnInsertIndex,
   columnLeft,
@@ -20,6 +21,7 @@ const column = (x: number, width = 280): ColumnLayout => ({
   viewportTop: 60,
   viewportHeight: 500,
   scrollY: 0,
+  estimate: 72,
   contentHeight: 400,
   cards: {},
   order: [],
@@ -75,6 +77,7 @@ describe('findTargetColumn', () => {
 const column3 = {
   order: ['one', 'two', 'three'],
   contentTop: 0,
+  estimate: 72,
   cards: {
     one: { x: 12, y: 0, width: 256, height: 60 },
     two: { x: 12, y: 68, width: 256, height: 60 },
@@ -98,6 +101,7 @@ describe('visibleCards', () => {
     const stale = {
       order: ['two', 'three'],
       contentTop: 0,
+      estimate: 72,
       cards: {
         two: { x: 12, y: 68, width: 256, height: 60 },
         three: { x: 12, y: 999, width: 256, height: 100 },
@@ -112,10 +116,74 @@ describe('visibleCards', () => {
     );
   });
 
-  it('skips cards that have not been measured yet', () => {
-    expect(
-      visibleCards({ ...column3, order: ['one', 'new', 'two'] }, null, 8)
-    ).toHaveLength(2);
+  it('counts cards that were never measured at the estimated height', () => {
+    // "new" was never rendered (outside the column's window): 72pt, at the
+    // card inset.
+    const cards = visibleCards(
+      { ...column3, order: ['one', 'new', 'two'] },
+      null,
+      8,
+      12
+    );
+    expect(cards.map((c) => [c.x, c.y, c.height])).toEqual([
+      [12, 0, 60],
+      [12, 68, 72],
+      [12, 148, 60],
+    ]);
+  });
+});
+
+describe('cardWindow', () => {
+  // Ten 60pt cards, 8 apart, from y 0: card i spans 68i to 68i + 60.
+  const ten = Array.from({ length: 10 }, () => 60);
+
+  it('takes the cards in view plus the overscan', () => {
+    // View 0–200 shows cards 0–2; 100pt of overscan (to 300) adds cards 3
+    // (204–264) and 4 (272–332).
+    expect(cardWindow(ten, 8, 0, 0, 200, 100)).toEqual({
+      first: 0,
+      last: 4,
+      before: 0,
+      after: 5 * 68,
+    });
+  });
+
+  it('measures the space above and below the window', () => {
+    // View 300–500 ± 20: cards 4 (272–332) to 7 (476–536).
+    expect(cardWindow(ten, 8, 0, 300, 200, 20)).toEqual({
+      first: 4,
+      last: 7,
+      before: 4 * 68,
+      after: 2 * 68,
+    });
+  });
+
+  it('starts below the content padding', () => {
+    // With 300pt of top padding the first card starts at 300.
+    expect(cardWindow(ten, 8, 300, 0, 200, 0)).toMatchObject({
+      first: 0,
+      last: -1,
+      after: 10 * 68,
+    });
+  });
+
+  it('skips cards out of the flow (the dragged card)', () => {
+    // Without card 0, card 1 starts at 0 and card 4 at 204.
+    const heights = [null, ...ten.slice(1)];
+    expect(cardWindow(heights, 8, 0, 0, 200, 0)).toMatchObject({
+      first: 1,
+      last: 3,
+      before: 0,
+    });
+  });
+
+  it('returns an empty window past the last card', () => {
+    expect(cardWindow(ten, 8, 0, 5000, 200, 0)).toEqual({
+      first: 10,
+      last: 9,
+      before: 10 * 68,
+      after: 0,
+    });
   });
 });
 
@@ -142,6 +210,7 @@ describe('insertIndexAt', () => {
     const tall = {
       order: ['tall', 'short'],
       contentTop: 0,
+      estimate: 72,
       cards: {
         tall: { x: 12, y: 0, width: 256, height: 116 },
         short: { x: 12, y: 124, width: 256, height: 63 },
@@ -262,6 +331,47 @@ describe('buildColumnItems', () => {
 
   it('adds nothing to empty columns', () => {
     expect(buildColumnItems([], true, undefined)).toEqual([]);
+  });
+
+  describe('with a window', () => {
+    const five = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }];
+
+    it('renders only the cards in the window', () => {
+      const items = buildColumnItems(five, false, undefined, {
+        first: 1,
+        last: 2,
+      });
+      expect(describeItems(items)).toEqual(['C2', 'C3']);
+    });
+
+    it('keeps slots counted from the top, and no end spacer mid-column', () => {
+      const items = buildColumnItems(five, true, undefined, {
+        first: 1,
+        last: 2,
+      });
+      expect(describeItems(items)).toEqual(['S1', 'C2', 'S2', 'C3']);
+    });
+
+    it('adds the end spacer when the window reaches the last card', () => {
+      const items = buildColumnItems(five, true, undefined, {
+        first: 3,
+        last: 4,
+      });
+      expect(describeItems(items)).toEqual(['S3', 'C4', 'S4', 'C5', 'E5']);
+    });
+
+    it('keeps the dragged card mounted outside the window', () => {
+      // Card 1 was lifted, then the column scrolled down.
+      const items = buildColumnItems(five, true, 1, { first: 3, last: 4 });
+      expect(describeItems(items)).toEqual([
+        'H1',
+        'S2',
+        'C4',
+        'S3',
+        'C5',
+        'E4',
+      ]);
+    });
   });
 });
 

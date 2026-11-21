@@ -58,6 +58,7 @@ type DelayMode = '0ms' | '150ms' | '300ms' | '600ms';
 type ScrollMode = 'off' | 'normal' | 'fast';
 type RulesMode = 'off' | 'on';
 type DataMode = 'demo' | '500' | '1000' | '2000';
+type VirtualizeMode = 'on' | 'off';
 
 const LIFT_STYLES: Record<LiftMode, KanbanDragStyle | undefined> = {
   subtle: { scale: 1.01, rotation: 0 },
@@ -119,6 +120,7 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
   const [rulesMode, setRulesMode] = useState<RulesMode>('off');
   const [columnDragMode, setColumnDragMode] = useState<ColumnDragMode>('on');
   const [dataMode, setDataMode] = useState<DataMode>('demo');
+  const [virtualizeMode, setVirtualizeMode] = useState<VirtualizeMode>('on');
   const [board, setBoard] = useState(initialBoard);
   const bench = useBenchmark(dataMode !== 'demo');
   const [lastEvent, setLastEvent] = useState(
@@ -156,6 +158,14 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
       setBoard(
         mode === 'demo' ? initialBoard : makeBenchmarkBoard(Number(mode))
       );
+    },
+    [mark, resetBench]
+  );
+  const handleVirtualizeMode = useCallback(
+    (mode: VirtualizeMode) => {
+      resetBench();
+      mark('mount');
+      setVirtualizeMode(mode);
     },
     [mark, resetBench]
   );
@@ -299,6 +309,13 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
           theme={theme}
         />
         <Segmented
+          label="Virtualize"
+          value={virtualizeMode}
+          options={['on', 'off']}
+          onChange={handleVirtualizeMode}
+          theme={theme}
+        />
+        <Segmented
           label="Theme"
           value={themeMode}
           options={['light', 'dark', 'auto']}
@@ -428,7 +445,8 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
 
       <Profiler id="board" onRender={bench.onRender}>
         <Board
-          key={dataMode}
+          key={`${dataMode}-${virtualizeMode}`}
+          virtualize={virtualizeMode === 'on'}
           board={board}
           theme={themeMode}
           density={density}
