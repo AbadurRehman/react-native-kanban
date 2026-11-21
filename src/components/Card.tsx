@@ -16,6 +16,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { DROP_MS, LONG_PRESS_MS } from '../dnd/constants';
 import { useDragContext } from '../dnd/DragContext';
+import { reportDragError } from '../dnd/debug';
 import { dropPosition, moveOverlay, updateDragTarget } from '../dnd/engine';
 import { keyOf } from '../dnd/geometry';
 import { removeCardLayout, setCardLayout } from '../dnd/registry';
@@ -88,22 +89,22 @@ function CardItemImpl<
   const columnKey = keyOf(column.id);
 
   // Report this card's rect so drag hit tests can find drop positions.
-  const { layouts } = shared;
+  const { layouts, active } = shared;
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const { x, y, width, height } = event.nativeEvent.layout;
-      setCardLayout(layouts, columnKey, cardKey, {
+      setCardLayout(layouts, active, columnKey, cardKey, {
         x,
         y,
         width,
         height,
       });
     },
-    [layouts, columnKey, cardKey]
+    [layouts, active, columnKey, cardKey]
   );
   useEffect(
-    () => () => removeCardLayout(layouts, columnKey, cardKey),
-    [layouts, columnKey, cardKey]
+    () => () => removeCardLayout(layouts, active, columnKey, cardKey),
+    [layouts, active, columnKey, cardKey]
   );
 
   const pan = useMemo(() => {
@@ -114,48 +115,61 @@ function CardItemImpl<
       .activateAfterLongPress(LONG_PRESS_MS)
       .onStart((event) => {
         'worklet';
-        if (s.active.value) return; // one drag at a time
-        const cardBox = measure(cardRef);
-        const boardBox = measure(s.boardRef);
-        if (!cardBox || !boardBox) return;
+        try {
+          if (s.active.value) return; // one drag at a time
+          const cardBox = measure(cardRef);
+          const boardBox = measure(s.boardRef);
+          if (!cardBox || !boardBox) return;
 
-        s.boardPageX.value = boardBox.pageX;
-        s.boardPageY.value = boardBox.pageY;
-        s.fingerX.value = event.absoluteX;
-        s.fingerY.value = event.absoluteY;
-        s.grabX.value = event.absoluteX - cardBox.pageX;
-        s.grabY.value = event.absoluteY - cardBox.pageY;
-        s.overlayX.value = cardBox.pageX - boardBox.pageX;
-        s.overlayY.value = cardBox.pageY - boardBox.pageY;
-        s.draggedKey.value = cardKey;
-        s.sourceKey.value = columnKey;
-        s.draggedRect.value = s.layouts.value[columnKey]?.cards[cardKey] ?? {
-          x: s.cardInset.value,
-          y: 0,
-          width: cardBox.width,
-          height: cardBox.height,
-        };
-        s.space.value = cardBox.height + s.cardGap.value;
-        s.targetKey.value = columnKey;
-        s.targetIndex.value = index;
-        s.dropping.value = false;
-        s.active.value = true;
-        s.lift.value = withSpring(1, { damping: 18, stiffness: 260 });
-        runOnJS(actions.start)(
-          cardKey,
-          columnKey,
-          index,
-          cardBox.width,
-          cardBox.height
-        );
+          s.boardPageX.value = boardBox.pageX;
+          s.boardPageY.value = boardBox.pageY;
+          s.fingerX.value = event.absoluteX;
+          s.fingerY.value = event.absoluteY;
+          s.grabX.value = event.absoluteX - cardBox.pageX;
+          s.grabY.value = event.absoluteY - cardBox.pageY;
+          s.overlayX.value = cardBox.pageX - boardBox.pageX;
+          s.overlayY.value = cardBox.pageY - boardBox.pageY;
+          s.draggedKey.value = cardKey;
+          s.sourceKey.value = columnKey;
+          s.draggedRect.value = s.layouts.value[columnKey]?.cards[cardKey] ?? {
+            x: s.cardInset.value,
+            y: 0,
+            width: cardBox.width,
+            height: cardBox.height,
+          };
+          s.space.value = cardBox.height + s.cardGap.value;
+          s.targetKey.value = columnKey;
+          s.targetIndex.value = index;
+          s.dropping.value = false;
+          s.debugUpdates.value = 0;
+          s.debugFrames.value = 0;
+          s.debugMapper.value = 0;
+          s.debugError.value = null;
+          s.active.value = true;
+          s.lift.value = withSpring(1, { damping: 18, stiffness: 260 });
+          runOnJS(actions.start)(
+            cardKey,
+            columnKey,
+            index,
+            cardBox.width,
+            cardBox.height
+          );
+        } catch (error) {
+          reportDragError(s, 'drag start', error);
+        }
       })
       .onUpdate((event) => {
         'worklet';
         if (s.draggedKey.value !== cardKey || s.dropping.value) return;
-        s.fingerX.value = event.absoluteX;
-        s.fingerY.value = event.absoluteY;
-        moveOverlay(s);
-        updateDragTarget(s, actions.setTarget);
+        try {
+          s.debugUpdates.value += 1;
+          s.fingerX.value = event.absoluteX;
+          s.fingerY.value = event.absoluteY;
+          moveOverlay(s);
+          updateDragTarget(s, actions.setTarget);
+        } catch (error) {
+          reportDragError(s, 'drag update', error);
+        }
       })
       .onFinalize(() => {
         'worklet';
@@ -164,19 +178,24 @@ function CardItemImpl<
         s.dropping.value = true;
 
         // Glide into the landing spot, then commit the move on the JS thread.
-        const landing = dropPosition(s);
-        s.lift.value = withTiming(0, { duration: DROP_MS });
-        if (landing) {
-          s.overlayX.value = withTiming(landing.x, { duration: DROP_MS });
-          s.overlayY.value = withTiming(
-            landing.y,
-            { duration: DROP_MS },
-            () => {
-              runOnJS(actions.finish)();
-            }
-          );
-        } else {
-          runOnJS(actions.finish)();
+        try {
+          const landing = dropPosition(s);
+          s.lift.value = withTiming(0, { duration: DROP_MS });
+          if (landing) {
+            s.overlayX.value = withTiming(landing.x, { duration: DROP_MS });
+            s.overlayY.value = withTiming(
+              landing.y,
+              { duration: DROP_MS },
+              () => {
+                runOnJS(actions.finish)();
+              }
+            );
+          } else {
+            runOnJS(actions.finish)();
+          }
+        } catch (error) {
+          reportDragError(s, 'drop', error);
+          runOnJS(actions.finish)(); // never leave a drag hanging
         }
       });
   }, [shared, actions, enabled, cardRef, card.id, cardKey, columnKey, index]);

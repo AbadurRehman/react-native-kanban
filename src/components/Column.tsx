@@ -17,6 +17,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { EDGE_Y, LAYOUT_MS, MAX_SCROLL_SPEED } from '../dnd/constants';
 import { useDragContext } from '../dnd/DragContext';
+import { reportDragError } from '../dnd/debug';
 import { updateDragTarget } from '../dnd/engine';
 import {
   autoScrollSpeed,
@@ -162,7 +163,7 @@ function ColumnImpl<
   }, [layouts, columnKey, contentTop]);
 
   // Auto-scroll this column while a card hovers near its top or bottom edge.
-  const autoScroll = useFrameCallback((frame) => {
+  function scrollColumnAtEdges(timeSincePreviousFrame: number | null) {
     'worklet';
     const s = shared;
     if (!s.active.value || s.dropping.value) return;
@@ -170,7 +171,7 @@ function ColumnImpl<
     const layout = s.layouts.value[columnKey];
     if (!layout) return;
     const fingerY = s.fingerY.value - s.boardPageY.value;
-    const frames = (frame.timeSincePreviousFrame ?? 16) / 16.67;
+    const frames = (timeSincePreviousFrame ?? 16) / 16.67;
     const speed =
       autoScrollSpeed(
         fingerY,
@@ -194,6 +195,15 @@ function ColumnImpl<
     });
     scrollTo(scrollRef, 0, next, false);
     updateDragTarget(s, actions.setTarget);
+  }
+
+  const autoScroll = useFrameCallback((frame) => {
+    'worklet';
+    try {
+      scrollColumnAtEdges(frame.timeSincePreviousFrame);
+    } catch (error) {
+      reportDragError(shared, 'column auto-scroll', error);
+    }
   }, false);
 
   const { setActive } = autoScroll;

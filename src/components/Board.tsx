@@ -20,6 +20,7 @@ import {
 import Animated, {
   scrollTo,
   useAnimatedRef,
+  useAnimatedReaction,
   useAnimatedStyle,
   useFrameCallback,
   useSharedValue,
@@ -30,6 +31,7 @@ import {
   LIFT_SCALE,
   MAX_SCROLL_SPEED,
 } from '../dnd/constants';
+import { publishDragDebug, reportDragError } from '../dnd/debug';
 import {
   DragProvider,
   useDragContext,
@@ -178,6 +180,10 @@ export function Board<
   const space = useSharedValue(0);
   const cardGap = useSharedValue(theme.spacing.cardGap);
   const cardInset = useSharedValue(theme.spacing.columnPadding);
+  const debugUpdates = useSharedValue(0);
+  const debugFrames = useSharedValue(0);
+  const debugMapper = useSharedValue(0);
+  const debugError = useSharedValue<string | null>(null);
   useEffect(() => {
     cardGap.value = theme.spacing.cardGap;
     cardInset.value = theme.spacing.columnPadding;
@@ -210,6 +216,10 @@ export function Board<
       space,
       cardGap,
       cardInset,
+      debugUpdates,
+      debugFrames,
+      debugMapper,
+      debugError,
     }),
     [
       boardRef,
@@ -237,7 +247,20 @@ export function Board<
       space,
       cardGap,
       cardInset,
+      debugUpdates,
+      debugFrames,
+      debugMapper,
+      debugError,
     ]
+  );
+
+  // Diagnostics: echoes the frame count through the animated-style loop, so a
+  // stalled loop shows up as `mapper` falling behind `frames`.
+  useAnimatedReaction(
+    () => debugFrames.value,
+    (frames) => {
+      debugMapper.value = frames;
+    }
   );
 
   useEffect(() => {
@@ -359,11 +382,12 @@ export function Board<
           source,
           destination,
         };
+        publishDragDebug(shared);
         onEnd?.(event);
         setDrag(null);
       },
     }),
-    [resetDragValues]
+    [resetDragValues, shared]
   );
 
   const dragContext = useMemo<DragContextValue>(
@@ -378,11 +402,10 @@ export function Board<
 
   // --- Every frame while dragging: auto-scroll the board near its left or
   // right edge, then re-check the drop target under the (still) finger. ---
-  const dragFrame = useFrameCallback((frame) => {
+  function scrollBoardAtEdges(timeSincePreviousFrame: number | null) {
     'worklet';
-    if (!active.value || dropping.value) return;
     const x = fingerX.value - boardPageX.value;
-    const frames = (frame.timeSincePreviousFrame ?? 16) / 16.67;
+    const frames = (timeSincePreviousFrame ?? 16) / 16.67;
     const speed =
       autoScrollSpeed(
         x,
@@ -401,6 +424,17 @@ export function Board<
     boardScrollX.value = next;
     scrollTo(boardScrollRef, next, 0, false);
     updateDragTarget(shared, actions.setTarget);
+  }
+
+  const dragFrame = useFrameCallback((frame) => {
+    'worklet';
+    if (!active.value || dropping.value) return;
+    try {
+      debugFrames.value += 1;
+      scrollBoardAtEdges(frame.timeSincePreviousFrame);
+    } catch (error) {
+      reportDragError(shared, 'board auto-scroll', error);
+    }
   }, false);
 
   const isDragging = drag !== null;

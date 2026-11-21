@@ -6,6 +6,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { LAYOUT_MS } from '../dnd/constants';
+import { reportDragError } from '../dnd/debug';
 import { useDragContext } from '../dnd/DragContext';
 import type { KanbanBaseStyles } from './createBaseStyles';
 import type { KanbanStyles } from './types';
@@ -50,11 +51,15 @@ export function Spacer({
   useAnimatedReaction(
     () => targetKey.value === columnKey && targetIndex.value === slot,
     (isOpen, wasOpen) => {
-      const next = isOpen ? space.value : 0;
-      if (wasOpen === null) {
-        height.value = next; // first run: no animation
-      } else if (isOpen !== wasOpen) {
-        height.value = withTiming(next, { duration: LAYOUT_MS });
+      try {
+        const next = isOpen ? space.value : 0;
+        if (wasOpen === null) {
+          height.value = next; // first run: no animation
+        } else if (isOpen !== wasOpen) {
+          height.value = withTiming(next, { duration: LAYOUT_MS });
+        }
+      } catch (error) {
+        reportDragError(shared, 'landing spot', error);
       }
     }
   );

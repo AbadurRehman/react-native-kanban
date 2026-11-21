@@ -48,6 +48,15 @@ export interface DragShared {
   /** Theme values the geometry needs: gap between cards, card inset. */
   cardGap: SharedValue<number>;
   cardInset: SharedValue<number>;
+
+  /**
+   * Dev diagnostics for the current drag (see dnd/debug.ts): finger updates
+   * received, frames run, frames seen by the animated-style loop, last error.
+   */
+  debugUpdates: SharedValue<number>;
+  debugFrames: SharedValue<number>;
+  debugMapper: SharedValue<number>;
+  debugError: SharedValue<string | null>;
 }
 
 /** JS-thread callbacks, called from worklets with runOnJS. */

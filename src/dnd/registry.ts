@@ -48,15 +48,21 @@ export function removeColumnLayout(layouts: Layouts, columnKey: string) {
   });
 }
 
-/** Records a card's rect (hit tests use its size; positions are stacked). */
+/**
+ * Records a card's rect (hit tests use its size; positions are stacked).
+ * Ignored while a drag is active: the dragged card is re-laid out as a hidden
+ * absolute view, and the registry must keep its in-column size until the drop.
+ */
 export function setCardLayout(
   layouts: Layouts,
+  active: SharedValue<boolean>,
   columnKey: string,
   cardKey: string,
   rect: Rect
 ) {
   layouts.modify((all) => {
     'worklet';
+    if (active.value) return all;
     const column = all[columnKey];
     if (column) {
       column.cards[cardKey] = rect;
@@ -73,11 +79,13 @@ export function setCardLayout(
 
 export function removeCardLayout(
   layouts: Layouts,
+  active: SharedValue<boolean>,
   columnKey: string,
   cardKey: string
 ) {
   layouts.modify((all) => {
     'worklet';
+    if (active.value) return all;
     const column = all[columnKey];
     if (column) delete column.cards[cardKey];
     return all;
