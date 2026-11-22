@@ -35,6 +35,14 @@ export interface DragShared {
   boardScrollX: SharedValue<number>;
   boardViewportWidth: SharedValue<number>;
   boardContentWidth: SharedValue<number>;
+  /**
+   * Column geometry: the first column's left edge in the board content, the
+   * distance between column starts (width + gap) and the column width.
+   * Columns are placed from these and their order, never from measurements.
+   */
+  contentLeft: SharedValue<number>;
+  columnStep: SharedValue<number>;
+  columnWidth: SharedValue<number>;
 
   /** Current drop target: column key and insert index among visible cards. */
   targetKey: SharedValue<string | null>;
@@ -56,6 +64,26 @@ export interface DragShared {
   scrollEdgeX: SharedValue<number>;
   scrollEdgeY: SharedValue<number>;
   scrollSpeed: SharedValue<number>;
+
+  /**
+   * Column drag (never at the same time as a card drag). Reuses the finger
+   * and board position values above.
+   */
+  colActive: SharedValue<boolean>;
+  colDropping: SharedValue<boolean>;
+  colDraggedKey: SharedValue<string | null>;
+  /** Where the column was and where it will land, among the other columns. */
+  colSourceIndex: SharedValue<number>;
+  colTargetIndex: SharedValue<number>;
+  /** Where the finger grabbed the column, relative to its top-left. */
+  colGrabX: SharedValue<number>;
+  colGrabY: SharedValue<number>;
+  /** Floating column position relative to the board viewport. */
+  colOverlayX: SharedValue<number>;
+  colOverlayY: SharedValue<number>;
+  /** Top of the column in the board viewport, where the drop lands. */
+  colStartY: SharedValue<number>;
+  colLift: SharedValue<number>;
 }
 
 /** JS-thread callbacks, called from worklets with runOnJS. */
@@ -70,6 +98,17 @@ export interface DragActions {
   setTarget: (columnKey: string, index: number) => void;
   /** Called after the drop animation; commits the move. */
   finish: () => void;
+
+  /** A column lifted. `cards` is the visible range to draw in its copy. */
+  startColumn: (
+    columnKey: string,
+    index: number,
+    width: number,
+    height: number,
+    cards: { first: number; last: number; offset: number }
+  ) => void;
+  setColumnTarget: (index: number) => void;
+  finishColumn: () => void;
 }
 
 export interface DragContextValue {

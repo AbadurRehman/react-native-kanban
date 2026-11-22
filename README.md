@@ -6,7 +6,7 @@
 
 Customizable drag-and-drop Kanban board for React Native, built on [Reanimated](https://docs.swmansion.com/react-native-reanimated/) and [Gesture Handler](https://docs.swmansion.com/react-native-gesture-handler/). Inspired by [react-kanban](https://github.com/lourenci/react-kanban), so the data model will feel familiar if you've used it on the web.
 
-> ⚠️ **Work in progress.** `0.3.x` adds drag customization: lift style, custom previews and landing spots, hold time, auto-scroll and locked cards. Column reordering and large boards land in `0.4.0`. See the [roadmap](#roadmap).
+> ⚠️ **Work in progress.** `0.4.x` adds column reordering and fast large boards: columns only render the cards near the screen. See the [roadmap](#roadmap).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/AbadurRehman/react-native-kanban/main/docs/images/drag.png" alt="Dragging a card in light and dark themes" width="560" />
@@ -106,6 +106,12 @@ The board fills its parent, so give the parent a size (for example `flex: 1`).
 | `renderDragPreview` | `(card, { column, index, theme }) => ReactNode` | the card | Replace the floating card. |
 | `renderPlaceholder` | `({ card, height, theme }) => ReactNode` | dashed box | Replace the landing spot. |
 | `autoScroll` | `boolean \| { edge?, speed? }` | `true` | Scroll near edges while dragging. `false` turns it off. |
+| `onColumnDragStart` | `({ column, source }) => void` | | A column was lifted by its header. |
+| `onColumnDragEnd` | `({ column, source, destination }) => void` | | A column was dropped. In controlled mode, apply it with `moveColumn`. |
+| `disableColumnDrag` | `boolean` | `false` | Turn off dragging columns by their header. |
+| `canDragColumn` | `(column) => boolean` | | Return `false` to lock a column's header. Other columns can still move past it. |
+| `virtualize` | `boolean` | `true` | Render only the cards near each column's viewport. `false` keeps every card mounted. |
+| `estimatedCardHeight` | `number` | average measured height | Height assumed for cards not rendered yet. |
 | `theme` | `'light' \| 'dark' \| 'auto' \| KanbanThemeInput` | `'light'` | Preset or custom theme. `'auto'` follows the device. |
 | `density` | `'comfortable' \| 'compact'` | `'comfortable'` | Compact tightens spacing and type. |
 | `columnWidth` | `number \| 'fullScreen'` | `280` (`240` compact) | `'fullScreen'` shows one column per screen. |
@@ -186,6 +192,45 @@ During a drag nothing re-renders: React renders once when the card lifts and onc
 - **`renderPlaceholder`**: draws the landing spot at the dragged card's height. Use `flex: 1` to fill it.
 - **`autoScroll`**: `edge` is how close to an edge scrolling starts (default 64 at the board's sides, 56 at a column's top and bottom); `speed` is the top speed in points per frame (default 14).
 
+### Reordering columns
+
+Long-press a column's header to lift the whole column. The other columns slide aside to show where it will land, and the board scrolls when you reach its edge. `source` and `destination` use the same shape as `moveColumn`:
+
+```tsx
+<Board
+  board={board}
+  onColumnDragEnd={({ source, destination }) =>
+    setBoard((b) => moveColumn(b, source, destination))
+  }
+  canDragColumn={(column) => column.id !== 'done'}
+/>
+```
+
+- Column drags use the same `dragActivationDelay`, `dragStyle` and `autoScroll` as cards. A custom `renderColumnHeader` is the drag handle, so long presses on it lift the column.
+- The floating copy shows the header, the cards in view and the footer. Only the cards in view are drawn, so long columns lift instantly.
+- Uncontrolled boards (`initialBoard`) move the column themselves and report it through `onBoardChange`.
+- A card and a column can't be dragged at the same time.
+- Style the landing spot with `styles.columnPlaceholder` and the floating copy with `styles.columnDragOverlay`.
+
+## Large boards
+
+Each column renders only the cards near its viewport, about a screen above and below, and keeps the space of the rest. Cards mount as they scroll into range, and their measured heights are kept, so scroll size and drop positions stay exact. Mount, lift and drop cost stays flat however long the columns get.
+
+Benchmark from the demo (Expo web, Chrome with a 4× slower CPU):
+
+| Cards | Mount | Card lift | Card drop | Drag fps |
+| --- | --- | --- | --- | --- |
+| 500 | 0.63 s (was 2.1 s) | 0.16 s (was 0.48 s) | 0.16 s (was 0.51 s) | 58 (was 51) |
+| 2000 | 0.43 s (was 9.4 s) | 0.15 s (was 1.95 s) | 0.12 s (was 1.05 s) | 60 (was 30) |
+
+Try it yourself: the demo's **Data** control loads 500, 1000 or 2000 cards and shows the timings; **Virtualize** compares with every card mounted.
+
+Tips:
+
+- Cards are laid out before they're measured using `estimatedCardHeight` (the average of measured cards by default). Set it if your cards are much taller or shorter than average so the first scroll is accurate.
+- Keep `renderCard` cheap and wrapped in `useCallback`: cards mount while you scroll.
+- `virtualize={false}` keeps every card mounted. Use it for small boards that should be fully reachable by screen readers.
+
 ## Theming
 
 Pick a preset, or pass a theme object. Nested tokens are merged into the preset, so you only override what you need:
@@ -245,7 +290,7 @@ For one-off tweaks without a custom theme, `styles` targets each part of the boa
 />
 ```
 
-Keys: `boardContent`, `column`, `columnHeader`, `columnTitle`, `countBadge`, `countBadgeText`, `columnContent`, `columnFooter`, `card`, `cardTitle`, `cardDescription`, `emptyColumn`, `emptyColumnText`, `placeholder` (the landing spot), `dragOverlay` (the lifted card's wrapper).
+Keys: `boardContent`, `column`, `columnHeader`, `columnTitle`, `countBadge`, `countBadgeText`, `columnContent`, `columnFooter`, `card`, `cardTitle`, `cardDescription`, `emptyColumn`, `emptyColumnText`, `placeholder` (the landing spot), `dragOverlay` (the lifted card's wrapper), `columnPlaceholder` (a column's landing spot), `columnDragOverlay` (the lifted column).
 
 ## Helpers
 
@@ -300,7 +345,7 @@ Data types: `KanbanBoard`, `KanbanColumn`, `KanbanCard`, `KanbanId`, `CardSource
 - [x] **0.1.0: Static board + theming.** `<Board />`, theme presets, style overrides, render props, layout options, helpers.
 - [x] **0.2.0: Card drag & drop.** Long-press drag, placeholder, auto-scroll, controlled/uncontrolled, callbacks.
 - [x] **0.3.0: Drag customization.** `dragStyle`, custom drag preview and placeholder, activation delay, auto-scroll settings, `canDragCard`/`canDropCard`.
-- [ ] **0.4.0: Columns & scale.** Column reordering, virtualization, 500+ card benchmarks.
+- [ ] **0.4.0: Columns & scale.** Column reordering, card virtualization, 500+ card benchmarks.
 - [ ] **1.0.0: Polish.** Accessibility, RTL, tablets, web demo, migration guide from react-kanban.
 
 ## Example apps

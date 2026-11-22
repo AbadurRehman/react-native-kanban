@@ -25,6 +25,8 @@ export type KanbanBaseStyles = {
   placeholder: ViewStyle;
   dragOverlay: ViewStyle;
   dragShadow: ViewStyle;
+  columnPlaceholder: ViewStyle;
+  columnDragShadow: ViewStyle;
 };
 
 /** Default styles for every part of the board, derived from the theme. */
@@ -143,6 +145,16 @@ export function createBaseStyles(theme: KanbanTheme): KanbanBaseStyles {
     // Lifted look for the default floating card; a custom preview brings its own.
     dragShadow: {
       borderRadius: radius.card,
+      ...shadows.cardDragging,
+    },
+    columnPlaceholder: {
+      borderRadius: radius.column,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: colors.accent,
+      backgroundColor: colors.placeholder,
+    },
+    columnDragShadow: {
       ...shadows.cardDragging,
     },
   });
