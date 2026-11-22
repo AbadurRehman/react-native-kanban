@@ -1,9 +1,10 @@
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import {
   resolveActivationDelay,
   resolveAutoScroll,
   resolveDragStyle,
 } from '../dnd/options';
+import { Platform } from 'react-native';
 
 describe('resolveDragStyle', () => {
   it('uses the default lift when nothing is given', () => {
@@ -62,6 +63,22 @@ describe('resolveAutoScroll', () => {
 });
 
 describe('resolveActivationDelay', () => {
+  it('starts mouse drags on movement on web', () => {
+    const os = jest.replaceProperty(Platform, 'OS', 'web');
+    const g = globalThis as { matchMedia?: unknown };
+    const media = (fine: boolean) => () => ({ matches: fine });
+    try {
+      g.matchMedia = media(true); // mouse or trackpad
+      expect(resolveActivationDelay(undefined)).toBe(0);
+      expect(resolveActivationDelay(300)).toBe(300); // an explicit delay wins
+      g.matchMedia = media(false); // touch screen
+      expect(resolveActivationDelay(undefined)).toBe(300);
+    } finally {
+      delete g.matchMedia;
+      os.restore();
+    }
+  });
+
   it('defaults to 300 ms and accepts 0', () => {
     expect(resolveActivationDelay(undefined)).toBe(300);
     expect(resolveActivationDelay(0)).toBe(0);

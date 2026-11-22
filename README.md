@@ -4,6 +4,8 @@
 [![CI](https://github.com/AbadurRehman/react-native-kanban/actions/workflows/ci.yml/badge.svg)](https://github.com/AbadurRehman/react-native-kanban/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/react-native-kanban.svg)](./LICENSE)
 
+**[▶ Try the live demo](https://abadurrehman.github.io/react-native-kanban/)** in your browser: drag cards and columns, switch themes, RTL, tablet widths and a 2000-card board.
+
 Customizable drag-and-drop Kanban board for React Native, built on [Reanimated](https://docs.swmansion.com/react-native-reanimated/) and [Gesture Handler](https://docs.swmansion.com/react-native-gesture-handler/). Inspired by [react-kanban](https://github.com/lourenci/react-kanban), so the data model will feel familiar if you've used it on the web.
 
 > ⚠️ **Work in progress.** `0.4.x` adds column reordering and fast large boards: columns only render the cards near the screen. See the [roadmap](#roadmap).
@@ -99,7 +101,7 @@ The board fills its parent, so give the parent a size (for example `flex: 1`).
 | `onCardDragStart` | `({ card, source }) => void` | | A card was lifted. A good place for haptics. |
 | `onCardDragEnd` | `({ card, source, destination, via }) => void` | | A card was dropped, or moved with a screen-reader action (`via: 'accessibility'`). In controlled mode, apply it with `moveCard`. |
 | `disableCardDrag` | `boolean` | `false` | Turn off long-press dragging. |
-| `dragActivationDelay` | `number` | `300` | How long to press before a card lifts, in ms. `0` lifts on the first movement. |
+| `dragActivationDelay` | `number` | `300` (`0` on web with a mouse) | How long to press before a card lifts, in ms. `0` lifts on the first movement. |
 | `canDragCard` | `(card, column) => boolean` | | Return `false` to lock a card in place. |
 | `canDropCard` | `({ card, fromColumn, toColumn }) => boolean` | | Return `false` to keep a card out of a column. |
 | `dragStyle` | `{ scale?, rotation?, opacity? }` | `{ scale: 1.03, rotation: 2, opacity: 1 }` | How the floating card looks at full lift. |
@@ -133,7 +135,7 @@ Wrap render props in `useCallback` so unchanged columns and cards skip re-render
 
 ## Drag and drop
 
-- **Lift:** press and hold a card for 300 ms (`dragActivationDelay`). Moving your finger before that scrolls instead, so drags and scrolls don't fight.
+- **Lift:** press and hold a card for 300 ms (`dragActivationDelay`). Moving your finger before that scrolls instead, so drags and scrolls don't fight. On web with a mouse or trackpad, drags start as soon as the pointer moves, like desktop apps; touch screens keep the long press.
 - **Move:** the card follows your finger on the UI thread. A dashed landing spot opens where it will go, and the other cards slide out of the way. Empty columns light up as drop zones.
 - **Auto-scroll:** drag near the left or right edge to scroll the board, or near a column's top or bottom to scroll that column.
 - **Drop:** the card glides into its spot. `source` and `destination` use the same shape as `moveCard`:
@@ -418,7 +420,7 @@ Data types: `KanbanBoard`, `KanbanColumn`, `KanbanCard`, `KanbanId`, `CardSource
 - [x] **0.2.0: Card drag & drop.** Long-press drag, placeholder, auto-scroll, controlled/uncontrolled, callbacks.
 - [x] **0.3.0: Drag customization.** `dragStyle`, custom drag preview and placeholder, activation delay, auto-scroll settings, `canDragCard`/`canDropCard`.
 - [x] **0.4.0: Columns & scale.** Column reordering, card virtualization, 500+ card benchmarks.
-- [ ] **1.0.0: Polish.** ~~Accessibility~~, ~~RTL~~, ~~tablets~~ (done), web demo, migration guide from react-kanban.
+- [ ] **1.0.0: Polish.** ~~Accessibility~~, ~~RTL~~, ~~tablets~~, ~~web demo~~ (done), migration guide from react-kanban.
 
 ## Example apps
 
@@ -429,7 +431,7 @@ This repo has two example apps that use the library straight from `src/`. Both r
 | React Native CLI | [`example/`](./example) | `yarn example android` / `yarn example ios` |
 | Expo | [`example-expo/`](./example-expo) | `yarn example:expo android` / `yarn example:expo ios` / `yarn example:expo web` |
 
-CI builds both apps on Android and iOS, plus the Expo app for web, on every PR.
+CI builds both apps on Android and iOS, plus the Expo app for web, on every PR. Every push to `main` publishes the Expo app's web build as the [live demo](https://abadurrehman.github.io/react-native-kanban/) (GitHub Pages, `.github/workflows/pages.yml`).
 
 ## Contributing
 

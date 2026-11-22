@@ -243,9 +243,10 @@ export interface BoardBaseProps<
   /** Turn off long-press dragging. */
   disableCardDrag?: boolean;
   /**
-   * How long a card must be pressed before it lifts, in ms. `300` by default.
-   * `0` lifts it on the first movement instead; columns can then only be
-   * scrolled from outside the cards.
+   * How long a card must be pressed before it lifts, in ms. `300` by default
+   * (on web with a mouse or trackpad, `0`: drags start on movement). `0` lifts
+   * it on the first movement instead; on touch screens columns can then only
+   * be scrolled from outside the cards.
    */
   dragActivationDelay?: number;
   /** Return `false` to lock a card in place. */

@@ -3,7 +3,7 @@
     "name": "Kanban Example Expo",
     "slug": "react-native-kanban-example-expo",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -20,6 +20,9 @@
       "package": "kanban.example.expo"
     },
     "web": {
+      "name": "react-native-kanban demo",
+      "shortName": "Kanban demo",
+      "description": "Drag-and-drop Kanban board for React Native: live demo",
       "favicon": "./assets/favicon.png"
     }
   }
