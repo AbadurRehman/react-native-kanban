@@ -6,7 +6,7 @@
 
 **[▶ Try the live demo](https://abadurrehman.github.io/react-native-kanban/)** in your browser: drag cards and columns, switch themes, RTL, tablet widths and a 2000-card board.
 
-Customizable drag-and-drop Kanban board for React Native, built on [Reanimated](https://docs.swmansion.com/react-native-reanimated/) and [Gesture Handler](https://docs.swmansion.com/react-native-gesture-handler/). Inspired by [react-kanban](https://github.com/lourenci/react-kanban), so the data model will feel familiar if you've used it on the web.
+Customizable drag-and-drop Kanban board for React Native, built on [Reanimated](https://docs.swmansion.com/react-native-reanimated/) and [Gesture Handler](https://docs.swmansion.com/react-native-gesture-handler/). Inspired by [react-kanban](https://github.com/lourenci/react-kanban), so the data model will feel familiar if you've used it on the web. Coming from react-kanban? See the [migration guide](./docs/migrating-from-react-kanban.md).
 
 > ⚠️ **Work in progress.** `0.4.x` adds column reordering and fast large boards: columns only render the cards near the screen. See the [roadmap](#roadmap).
 
@@ -420,7 +420,7 @@ Data types: `KanbanBoard`, `KanbanColumn`, `KanbanCard`, `KanbanId`, `CardSource
 - [x] **0.2.0: Card drag & drop.** Long-press drag, placeholder, auto-scroll, controlled/uncontrolled, callbacks.
 - [x] **0.3.0: Drag customization.** `dragStyle`, custom drag preview and placeholder, activation delay, auto-scroll settings, `canDragCard`/`canDropCard`.
 - [x] **0.4.0: Columns & scale.** Column reordering, card virtualization, 500+ card benchmarks.
-- [ ] **1.0.0: Polish.** ~~Accessibility~~, ~~RTL~~, ~~tablets~~, ~~web demo~~ (done), migration guide from react-kanban.
+- [ ] **1.0.0: Polish.** Accessibility, RTL, tablets, a web demo and a [migration guide](./docs/migrating-from-react-kanban.md) from react-kanban (all done; release next).
 
 ## Example apps
 
