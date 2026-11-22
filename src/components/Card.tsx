@@ -261,6 +261,17 @@ function CardItemImpl<
   const a11y = useKanbanA11y();
   const grouped = a11y.enabled && !hidden && Platform.OS !== 'web';
   const movable = enabled && draggable;
+  const positionText = a11y.labels.cardPosition({
+    position: index + 1,
+    count: column.cards.length,
+    column: titleOf(column),
+  });
+  // Android turns accessibilityValue into the whole content description, so
+  // TalkBack would skip the card's text: read the position as a last child.
+  const positionAsChild = Platform.OS === 'android';
+  const positionChild = positionAsChild ? (
+    <Text style={cardStyles.srOnly}>{positionText}</Text>
+  ) : null;
   const a11yActions = grouped
     ? [
         ...(onCardPress ? [{ name: 'activate' }] : []),
@@ -275,18 +286,29 @@ function CardItemImpl<
     },
     [a11y, card, column, index, handlePress]
   );
+  const groupProps = {
+    accessible: true,
+    accessibilityValue: positionAsChild ? undefined : { text: positionText },
+    accessibilityActions: a11yActions,
+    onAccessibilityAction: handleA11yAction,
+  };
+
   // After a move made with an action, focus follows the card.
   const contentRef = useRef<ComponentRef<typeof View>>(null);
+  const pressRef = useRef<ComponentRef<typeof View>>(null);
+  // A pressable card is grouped on its Pressable: on Android a clickable
+  // child is left out of its parent's label, so the text would go unread.
+  const groupOnPress = grouped && !!onCardPress;
   const { focusTarget } = a11y;
   useEffect(() => {
     if (focusTarget.current !== `card:${cardKey}`) return;
     focusTarget.current = null;
     const timer = setTimeout(
-      () => focusElement(contentRef.current),
+      () => focusElement((groupOnPress ? pressRef : contentRef).current),
       FOCUS_DELAY_MS
     );
     return () => clearTimeout(timer);
-  }, [focusTarget, cardKey, index, column.id]);
+  }, [focusTarget, cardKey, index, column.id, groupOnPress]);
 
   const info: CardRenderInfo<TColumn> = { column, index, theme };
   const content = renderCard ? (
@@ -319,38 +341,27 @@ function CardItemImpl<
             style={hidden ? cardStyles.invisible : undefined}
             accessibilityElementsHidden={hidden}
             importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
-            accessible={grouped || undefined}
-            accessibilityRole={grouped && onCardPress ? 'button' : undefined}
-            accessibilityValue={
-              grouped
-                ? {
-                    text: a11y.labels.cardPosition({
-                      position: index + 1,
-                      count: column.cards.length,
-                      column: titleOf(column),
-                    }),
-                  }
-                : undefined
-            }
-            accessibilityActions={a11yActions}
-            onAccessibilityAction={grouped ? handleA11yAction : undefined}
+            {...(grouped && !groupOnPress ? groupProps : null)}
           >
             {onCardPress ? (
               <Pressable
-                // Grouped, the card itself is the button.
-                accessible={!grouped}
-                accessibilityRole={grouped ? undefined : 'button'}
+                ref={pressRef}
+                testID={`kanban-press-${card.id}`}
+                accessibilityRole="button"
                 accessibilityLabel={grouped ? undefined : titleOf(card)}
+                {...(groupOnPress ? groupProps : null)}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
                 onPress={handlePress}
                 style={({ pressed }) => (pressed ? base.pressed : undefined)}
               >
                 {content}
+                {groupOnPress ? positionChild : null}
               </Pressable>
             ) : (
               content
             )}
+            {grouped && !groupOnPress ? positionChild : null}
           </View>
         </Animated.View>
       </GestureDetector>
@@ -365,4 +376,12 @@ const cardStyles = StyleSheet.create({
   // `top` keeps it where it was.
   lifted: { position: 'absolute', left: 0, right: 0 },
   invisible: { opacity: 0 },
+  // Read by screen readers, not shown (1pt so TalkBack counts it as visible).
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    overflow: 'hidden',
+    opacity: 0,
+  },
 });

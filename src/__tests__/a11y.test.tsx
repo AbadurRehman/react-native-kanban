@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react-native';
 import { useState } from 'react';
-import { AccessibilityInfo, Text } from 'react-native';
+import { AccessibilityInfo, Platform, Text } from 'react-native';
 import {
   Board,
   moveCard,
@@ -26,7 +32,9 @@ const board: KanbanBoard = {
   ],
 };
 
+// The screen-reader element: the Pressable when cards can be pressed.
 const card = (id: number) =>
+  screen.queryByTestId(`kanban-press-${id}`, { includeHiddenElements: true }) ??
   screen.getByTestId(`kanban-content-${id}`, { includeHiddenElements: true });
 const header = (id: string) =>
   screen.getByTestId(`kanban-column-heading-${id}`).props;
@@ -70,6 +78,21 @@ describe('cards for screen readers', () => {
     expect(two.accessibilityValue).toEqual({ text: '2 of 2 in To do' });
     // Not a button unless cards can be pressed.
     expect(two.accessibilityRole).toBeUndefined();
+  });
+
+  it('on Android, read their text then their place (no value text)', async () => {
+    // Android makes accessibilityValue.text the whole content description,
+    // which would hide the card's own text from TalkBack.
+    const os = jest.replaceProperty(Platform, 'OS', 'android');
+    try {
+      await renderBoard();
+      const two = card(2);
+      expect(two.props.accessible).toBe(true);
+      expect(two.props.accessibilityValue).toBeUndefined();
+      expect(within(two).getByText('2 of 2 in To do')).toBeTruthy();
+    } finally {
+      os.restore();
+    }
   });
 
   it('offer moves up, down and to the neighbouring columns', async () => {
@@ -179,7 +202,7 @@ describe('cards for screen readers', () => {
   it('can be left to the card content with disableAccessibilityActions', async () => {
     const onCardPress = jest.fn();
     await renderBoard({ disableAccessibilityActions: true, onCardPress });
-    const one = card(1).props;
+    const one = screen.getByTestId('kanban-content-1').props;
     expect(one.accessible).toBeUndefined();
     expect(one.accessibilityActions).toBeUndefined();
     // The press target is its own button again.
