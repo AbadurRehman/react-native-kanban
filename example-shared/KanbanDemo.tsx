@@ -47,7 +47,10 @@ import { initialBoard, makeBenchmarkBoard, type Task } from './data';
  * everything from each app's own node_modules.
  */
 
-type WidthMode = 'fixed' | 'fullScreen';
+type WidthMode = 'fixed' | 'fullScreen' | 'responsive';
+// Whole columns of at least 280pt, up to 400pt: one per screen on phones,
+// two to four on tablets.
+const RESPONSIVE_COLUMNS = { min: 280, max: 400 };
 type CardMode = 'custom' | 'default';
 type HeightMode = 'content' | 'fill';
 type DragMode = 'on' | 'off';
@@ -345,7 +348,7 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
         <Segmented
           label="Columns"
           value={widthMode}
-          options={['fixed', 'fullScreen']}
+          options={['fixed', 'fullScreen', 'responsive']}
           onChange={setWidthMode}
           theme={theme}
         />
@@ -464,7 +467,13 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
           board={board}
           theme={themeMode}
           density={density}
-          columnWidth={widthMode === 'fullScreen' ? 'fullScreen' : undefined}
+          columnWidth={
+            widthMode === 'fullScreen'
+              ? 'fullScreen'
+              : widthMode === 'responsive'
+                ? RESPONSIVE_COLUMNS
+                : undefined
+          }
           columnHeight={heightMode}
           renderCard={cardMode === 'custom' ? renderCard : undefined}
           renderColumnFooter={renderColumnFooter}

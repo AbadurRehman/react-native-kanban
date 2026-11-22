@@ -116,7 +116,7 @@ The board fills its parent, so give the parent a size (for example `flex: 1`).
 | `disableAccessibilityActions` | `boolean` | `false` | Turn off the screen-reader Move actions and card grouping (see [Accessibility](#accessibility)). |
 | `theme` | `'light' \| 'dark' \| 'auto' \| KanbanThemeInput` | `'light'` | Preset or custom theme. `'auto'` follows the device. |
 | `density` | `'comfortable' \| 'compact'` | `'comfortable'` | Compact tightens spacing and type. |
-| `columnWidth` | `number \| 'fullScreen'` | `280` (`240` compact) | `'fullScreen'` shows one column per screen. |
+| `columnWidth` | `number \| 'fullScreen' \| { min, max? }` | `280` (`240` compact) | `'fullScreen'` shows one column per screen; `{ min, max }` fits whole columns to the screen (see [Tablets](#tablets-and-rotation)). |
 | `columnHeight` | `'content' \| 'fill'` | `'content'` | Size columns to their cards, or stretch them to the board height. |
 | `snapToColumns` | `boolean` | `true` for `'fullScreen'` | Snap horizontal scrolling to columns. |
 | `showCardCount` | `boolean` | `true` | Count badge next to column titles. |
@@ -268,6 +268,25 @@ Translate everything with `labels`:
 />
 ```
 
+## Tablets and rotation
+
+Fixed-width columns leave empty space on big screens. Give `columnWidth` a range instead:
+
+```tsx
+<Board board={board} columnWidth={{ min: 280, max: 400 }} />
+```
+
+The board fits as many whole columns of at least `min` as its width allows and shares the room between them, up to `max` each:
+
+| Screen | Columns in view | Width |
+| --- | --- | --- |
+| Phone (390 pt) | 1 | 358 |
+| iPad portrait (820 pt) | 2 | 388 |
+| iPad landscape (1180 pt) | 3 | 374 |
+| iPad Pro landscape (1366 pt) | 4 | 324 |
+
+It uses the board's own width, so it re-fits on rotation, in split view and in resizable windows. A board with fewer columns than fit shares the width among them (up to `max`). Add `snapToColumns` to page through columns.
+
 ## Right-to-left
 
 In apps running right to left (Urdu, Arabic, Hebrew, …), the board follows `I18nManager.isRTL`:
@@ -399,7 +418,7 @@ Data types: `KanbanBoard`, `KanbanColumn`, `KanbanCard`, `KanbanId`, `CardSource
 - [x] **0.2.0: Card drag & drop.** Long-press drag, placeholder, auto-scroll, controlled/uncontrolled, callbacks.
 - [x] **0.3.0: Drag customization.** `dragStyle`, custom drag preview and placeholder, activation delay, auto-scroll settings, `canDragCard`/`canDropCard`.
 - [x] **0.4.0: Columns & scale.** Column reordering, card virtualization, 500+ card benchmarks.
-- [ ] **1.0.0: Polish.** ~~Accessibility~~, ~~RTL~~ (done), tablets, web demo, migration guide from react-kanban.
+- [ ] **1.0.0: Polish.** ~~Accessibility~~, ~~RTL~~, ~~tablets~~ (done), web demo, migration guide from react-kanban.
 
 ## Example apps
 

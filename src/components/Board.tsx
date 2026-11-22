@@ -46,6 +46,7 @@ import {
   buildColumnItems,
   clampScroll,
   keyOf,
+  responsiveColumnWidth,
   type ColumnLayout,
   type Rect,
 } from '../dnd/geometry';
@@ -741,33 +742,63 @@ export function Board<
     [boardContentWidth]
   );
 
-  const isFullScreen = columnWidth === 'fullScreen';
-  const resolvedColumnWidth = isFullScreen
-    ? Math.max(
-        0,
-        (boardSize?.width ?? windowWidth) - theme.spacing.boardPadding * 2
-      )
-    : (columnWidth ?? DEFAULT_COLUMN_WIDTH[theme.density]);
   // Where columns sit in the scroll content: positions come from these and
   // the column order, never from measurements (see findTargetColumn).
   const boardContentStyle = useMemo(
     () => StyleSheet.flatten([base.boardContent, styles?.boardContent]) ?? {},
     [base.boardContent, styles?.boardContent]
   );
+  const horizontalPadding = (side: 'start' | 'end') => {
+    const logical =
+      side === 'start'
+        ? boardContentStyle.paddingStart
+        : boardContentStyle.paddingEnd;
+    // On native, left/right mean start/end; on web they stay physical.
+    const leftIsStart = !isRTL || swapsLeftAndRight;
+    const physical =
+      (side === 'start') === leftIsStart
+        ? boardContentStyle.paddingLeft
+        : boardContentStyle.paddingRight;
+    return numberOr(
+      logical ??
+        physical ??
+        boardContentStyle.paddingHorizontal ??
+        boardContentStyle.padding,
+      0
+    );
+  };
   // Padding on the start edge (the right one in RTL boards).
-  const boardLeft = numberOr(
-    boardContentStyle.paddingStart ??
-      (isRTL && !swapsLeftAndRight
-        ? boardContentStyle.paddingRight
-        : boardContentStyle.paddingLeft) ??
-      boardContentStyle.paddingHorizontal ??
-      boardContentStyle.padding,
-    0
-  );
+  const boardLeft = horizontalPadding('start');
+  const boardEnd = horizontalPadding('end');
   const columnGap = numberOr(
     boardContentStyle.columnGap ?? boardContentStyle.gap,
     0
   );
+
+  const isFullScreen = columnWidth === 'fullScreen';
+  const responsiveWidth =
+    typeof columnWidth === 'object' && columnWidth !== null
+      ? columnWidth
+      : null;
+  // Room for columns: the board's width (re-measured on rotation and in
+  // split view) minus its padding.
+  const available = Math.max(
+    0,
+    (boardSize?.width ?? windowWidth) - boardLeft - boardEnd
+  );
+  const resolvedColumnWidth = isFullScreen
+    ? available
+    : responsiveWidth
+      ? responsiveColumnWidth(
+          available,
+          columnGap,
+          board.columns.length,
+          responsiveWidth.min,
+          responsiveWidth.max
+        )
+      : typeof columnWidth === 'number'
+        ? columnWidth
+        : DEFAULT_COLUMN_WIDTH[theme.density];
   const step = resolvedColumnWidth + columnGap;
   useEffect(() => {
     contentLeft.value = boardLeft;

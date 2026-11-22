@@ -206,10 +206,13 @@ export interface BoardBaseProps<
   /** `'comfortable'` (default) or `'compact'`. */
   density?: KanbanDensity;
   /**
-   * Column width in points, or `'fullScreen'` to show one column per screen
-   * (great on phones). Defaults to 280 (240 when compact).
+   * Column width in points; `'fullScreen'` to show one column per screen
+   * (great on phones); or `{ min, max }` to fit as many whole columns of at
+   * least `min` as the board's width allows, sharing it up to `max` each:
+   * one per screen on phones, more on tablets, re-fitted on rotation and
+   * in split view. Defaults to 280 (240 when compact).
    */
-  columnWidth?: number | 'fullScreen';
+  columnWidth?: number | 'fullScreen' | { min: number; max?: number };
   /**
    * `'content'` (default): columns are as tall as their cards and scroll once
    * they reach the bottom of the board, keeping the footer under the last card.
