@@ -296,6 +296,13 @@ export interface BoardBaseProps<
    */
   disableAccessibilityActions?: boolean;
 
+  /**
+   * Layout direction. `'rtl'` puts the first column on the right and mirrors
+   * dragging and auto-scroll. Defaults to the app's direction
+   * (`I18nManager.isRTL`); set it on web, where that is always LTR.
+   */
+  direction?: 'ltr' | 'rtl';
+
   /** Turn off dragging columns by their header. */
   disableColumnDrag?: boolean;
   /**

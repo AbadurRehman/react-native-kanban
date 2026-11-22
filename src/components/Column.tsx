@@ -649,7 +649,7 @@ function ColumnImpl<
           ? [
               columnStyles.lifted,
               {
-                left: liftedLeft,
+                start: liftedLeft, // from the start edge, in either direction
                 top: columnTop.current,
                 height: columnHeight.current,
               },

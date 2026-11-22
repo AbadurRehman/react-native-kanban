@@ -7,14 +7,15 @@ import {
   useState,
 } from 'react';
 import {
+  I18nManager,
   Platform,
   Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  View,
   useColorScheme,
+  View,
 } from 'react-native';
 import {
   Board,
@@ -59,6 +60,7 @@ type ScrollMode = 'off' | 'normal' | 'fast';
 type RulesMode = 'off' | 'on';
 type DataMode = 'demo' | '500' | '1000' | '2000';
 type VirtualizeMode = 'on' | 'off';
+type DirectionMode = 'ltr' | 'rtl';
 
 const LIFT_STYLES: Record<LiftMode, KanbanDragStyle | undefined> = {
   subtle: { scale: 1.01, rotation: 0 },
@@ -121,6 +123,10 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
   const [columnDragMode, setColumnDragMode] = useState<ColumnDragMode>('on');
   const [dataMode, setDataMode] = useState<DataMode>('demo');
   const [virtualizeMode, setVirtualizeMode] = useState<VirtualizeMode>('on');
+  // Right to left without restarting the app: only the board flips.
+  const [directionMode, setDirectionMode] = useState<DirectionMode>(
+    I18nManager.isRTL ? 'rtl' : 'ltr'
+  );
   const [board, setBoard] = useState(initialBoard);
   const bench = useBenchmark(dataMode !== 'demo');
   const [lastEvent, setLastEvent] = useState(
@@ -309,6 +315,13 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
           theme={theme}
         />
         <Segmented
+          label="Direction"
+          value={directionMode}
+          options={['ltr', 'rtl']}
+          onChange={setDirectionMode}
+          theme={theme}
+        />
+        <Segmented
           label="Virtualize"
           value={virtualizeMode}
           options={['on', 'off']}
@@ -445,7 +458,8 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
 
       <Profiler id="board" onRender={bench.onRender}>
         <Board
-          key={`${dataMode}-${virtualizeMode}`}
+          key={`${dataMode}-${virtualizeMode}-${directionMode}`}
+          direction={directionMode}
           virtualize={virtualizeMode === 'on'}
           board={board}
           theme={themeMode}

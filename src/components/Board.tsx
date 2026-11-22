@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import {
+  Platform,
   StyleSheet,
   useWindowDimensions,
   type LayoutChangeEvent,
@@ -58,6 +59,7 @@ import {
   type CardActionName,
   type ColumnActionName,
 } from '../a11y/moves';
+import { appDirection, leftEdge, swapsLeftAndRight } from '../dnd/direction';
 import { moveCard, moveColumn } from '../helpers';
 import {
   KanbanThemeProvider,
@@ -216,6 +218,7 @@ export function Board<
     onColumnDragStart,
     onColumnDragEnd,
     disableAccessibilityActions = false,
+    direction: directionProp,
     style,
     testID = 'kanban-board',
   } = props;
@@ -252,6 +255,12 @@ export function Board<
   const boardScrollX = useSharedValue(0);
   const boardViewportWidth = useSharedValue(0);
   const boardContentWidth = useSharedValue(0);
+  const direction = directionProp ?? appDirection();
+  const isRTL = direction === 'rtl';
+  const rtl = useSharedValue(isRTL);
+  useEffect(() => {
+    rtl.value = isRTL;
+  }, [rtl, isRTL]);
   const targetKey = useSharedValue<string | null>(null);
   const targetIndex = useSharedValue(0);
   const sourceKey = useSharedValue<string | null>(null);
@@ -318,6 +327,7 @@ export function Board<
       boardScrollX,
       boardViewportWidth,
       boardContentWidth,
+      rtl,
       targetKey,
       targetIndex,
       sourceKey,
@@ -364,6 +374,7 @@ export function Board<
       boardScrollX,
       boardViewportWidth,
       boardContentWidth,
+      rtl,
       targetKey,
       targetIndex,
       sourceKey,
@@ -641,14 +652,20 @@ export function Board<
         scrollSpeed.value
       ) * frames;
     if (speed === 0) return;
+    // `speed` is physical (positive: towards the right edge); the scroll is
+    // kept from the start edge, which is the right one in RTL boards.
+    const max = Math.max(0, boardContentWidth.value - boardViewportWidth.value);
     const next = clampScroll(
-      boardScrollX.value + speed,
+      boardScrollX.value + (rtl.value ? -speed : speed),
       boardContentWidth.value,
       boardViewportWidth.value
     );
     if (next === boardScrollX.value) return;
     boardScrollX.value = next;
-    scrollTo(boardScrollRef, next, 0, false);
+    // Native scroll views take offsets from the left; RTL ones on web count
+    // from the right edge, from 0 down.
+    const offset = !rtl.value ? next : IS_WEB ? -next : max - next;
+    scrollTo(boardScrollRef, offset, 0, false);
     if (draggingColumn) {
       updateColumnTarget(shared, actions.setColumnTarget);
     } else {
@@ -703,9 +720,19 @@ export function Board<
   );
   const handleBoardScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      boardScrollX.value = event.nativeEvent.contentOffset.x;
+      const { contentOffset, contentSize, layoutMeasurement } =
+        event.nativeEvent;
+      // Kept from the start edge. Native scroll views report offsets from
+      // the left (in RTL that is the far end); RTL ones on web count from
+      // the right edge, from 0 down.
+      const x = contentOffset.x;
+      boardScrollX.value = !isRTL
+        ? x
+        : IS_WEB
+          ? -x
+          : Math.max(0, contentSize.width - layoutMeasurement.width) - x;
     },
-    [boardScrollX]
+    [boardScrollX, isRTL]
   );
   const handleBoardContentSize = useCallback(
     (width: number) => {
@@ -727,8 +754,12 @@ export function Board<
     () => StyleSheet.flatten([base.boardContent, styles?.boardContent]) ?? {},
     [base.boardContent, styles?.boardContent]
   );
+  // Padding on the start edge (the right one in RTL boards).
   const boardLeft = numberOr(
-    boardContentStyle.paddingLeft ??
+    boardContentStyle.paddingStart ??
+      (isRTL && !swapsLeftAndRight
+        ? boardContentStyle.paddingRight
+        : boardContentStyle.paddingLeft) ??
       boardContentStyle.paddingHorizontal ??
       boardContentStyle.padding,
     0
@@ -970,7 +1001,10 @@ export function Board<
         <DragProvider value={dragContext}>
           <GestureHandlerRootView
             testID={testID}
-            style={[base.boardRoot, style]}
+            // The drag math follows this direction, so it is set here. On
+            // web, `dir` also makes start/end styles follow it.
+            style={[base.boardRoot, style, { direction }]}
+            {...(IS_WEB ? ({ dir: direction } as object) : null)}
           >
             <Animated.View
               ref={boardRef}
@@ -992,6 +1026,7 @@ export function Board<
                 scrollEventThrottle={16}
                 onScroll={handleBoardScroll}
                 onContentSizeChange={handleBoardContentSize}
+                testID={`${testID}-scroll`}
                 snapToInterval={shouldSnap ? snapInterval : undefined}
                 snapToAlignment="start"
                 decelerationRate={shouldSnap ? 'fast' : 'normal'}
@@ -1066,6 +1101,7 @@ export function Board<
                   renderCard={renderDragPreview ?? renderCard}
                   customPreview={renderDragPreview !== undefined}
                   lift={liftStyle}
+                  rtl={isRTL}
                 />
               ) : null}
 
@@ -1086,6 +1122,7 @@ export function Board<
                   renderColumnFooter={renderColumnFooter}
                   renderEmptyColumn={renderEmptyColumn}
                   lift={liftStyle}
+                  rtl={isRTL}
                 />
               ) : null}
             </Animated.View>
@@ -1095,6 +1132,8 @@ export function Board<
     </KanbanThemeProvider>
   );
 }
+
+const IS_WEB = Platform.OS === 'web';
 
 const numberOr = (value: unknown, fallback: number) =>
   typeof value === 'number' ? value : fallback;
@@ -1114,6 +1153,7 @@ interface DragOverlayProps<
   /** `renderDragPreview` draws it: no default lifted shadow. */
   customPreview: boolean;
   lift: ResolvedDragStyle;
+  rtl: boolean;
 }
 
 /** The lifted card that follows the finger, drawn above every column. */
@@ -1131,6 +1171,7 @@ function DragOverlay<
   renderCard,
   customPreview,
   lift: liftStyle,
+  rtl: rtlLayout,
 }: DragOverlayProps<TCard, TColumn>) {
   const { shared } = useDragContext();
   const { overlayX, overlayY, lift } = shared;
@@ -1157,6 +1198,7 @@ function DragOverlay<
       pointerEvents="none"
       style={[
         base.dragOverlay,
+        leftEdge(rtlLayout),
         !customPreview && base.dragShadow,
         { width },
         styles?.dragOverlay,

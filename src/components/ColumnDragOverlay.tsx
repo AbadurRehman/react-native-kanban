@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useDragContext } from '../dnd/DragContext';
+import { leftEdge } from '../dnd/direction';
 import { keyOf } from '../dnd/geometry';
 import type { ResolvedDragStyle } from '../dnd/options';
 import type { KanbanTheme } from '../theme/types';
@@ -42,6 +43,7 @@ interface ColumnDragOverlayProps<
   renderColumnFooter: BoardBaseProps<TCard, TColumn>['renderColumnFooter'];
   renderEmptyColumn: BoardBaseProps<TCard, TColumn>['renderEmptyColumn'];
   lift: ResolvedDragStyle;
+  rtl: boolean;
 }
 
 /**
@@ -68,6 +70,7 @@ export function ColumnDragOverlay<
   renderColumnFooter,
   renderEmptyColumn,
   lift: liftStyle,
+  rtl,
 }: ColumnDragOverlayProps<TCard, TColumn>) {
   const { shared } = useDragContext();
   const { colOverlayX, colOverlayY, colLift } = shared;
@@ -102,6 +105,7 @@ export function ColumnDragOverlay<
       pointerEvents="none"
       style={[
         overlayStyles.overlay,
+        leftEdge(rtl),
         base.column,
         base.columnDragShadow,
         styles?.column,
@@ -171,7 +175,6 @@ export function ColumnDragOverlay<
 const overlayStyles = StyleSheet.create({
   overlay: {
     position: 'absolute',
-    left: 0,
     top: 0,
     zIndex: 1000,
   },

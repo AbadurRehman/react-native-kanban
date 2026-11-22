@@ -32,9 +32,16 @@ export interface DragShared {
   layouts: SharedValue<Record<string, ColumnLayout>>;
   /** Column keys in board order. */
   columnOrder: SharedValue<string[]>;
+  /** How far the board is scrolled from its start edge (the right in RTL). */
   boardScrollX: SharedValue<number>;
   boardViewportWidth: SharedValue<number>;
   boardContentWidth: SharedValue<number>;
+  /**
+   * Right-to-left board: columns run from the right. Column positions
+   * (`contentLeft`, `columnStep`) and `boardScrollX` then count from the
+   * right edge; finger positions stay measured from the left.
+   */
+  rtl: SharedValue<boolean>;
   /**
    * Column geometry: the first column's left edge in the board content, the
    * distance between column starts (width + gap) and the column width.

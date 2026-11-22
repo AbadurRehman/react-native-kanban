@@ -112,6 +112,7 @@ The board fills its parent, so give the parent a size (for example `flex: 1`).
 | `canDragColumn` | `(column) => boolean` | | Return `false` to lock a column's header. Other columns can still move past it. |
 | `virtualize` | `boolean` | `true` | Render only the cards near each column's viewport. `false` keeps every card mounted. |
 | `estimatedCardHeight` | `number` | average measured height | Height assumed for cards not rendered yet. |
+| `direction` | `'ltr' \| 'rtl'` | app direction | Right to left puts the first column on the right and mirrors dragging (see [Right-to-left](#right-to-left)). |
 | `disableAccessibilityActions` | `boolean` | `false` | Turn off the screen-reader Move actions and card grouping (see [Accessibility](#accessibility)). |
 | `theme` | `'light' \| 'dark' \| 'auto' \| KanbanThemeInput` | `'light'` | Preset or custom theme. `'auto'` follows the device. |
 | `density` | `'comfortable' \| 'compact'` | `'comfortable'` | Compact tightens spacing and type. |
@@ -267,6 +268,22 @@ Translate everything with `labels`:
 />
 ```
 
+## Right-to-left
+
+In apps running right to left (Urdu, Arabic, Hebrew, …), the board follows `I18nManager.isRTL`:
+
+- The first column sits on the right, and the board starts scrolled to it.
+- Dragging, landing spots, auto-scroll and drop animations are mirrored.
+- Column headers and cards lay out right to left.
+
+Set `direction` to override it for one board, or on web, where `I18nManager` always reports left to right:
+
+```tsx
+<Board board={board} direction="rtl" />
+```
+
+Moves are reported the same way in both directions: positions count from the first column and the first card.
+
 ## Theming
 
 Pick a preset, or pass a theme object. Nested tokens are merged into the preset, so you only override what you need:
@@ -382,7 +399,7 @@ Data types: `KanbanBoard`, `KanbanColumn`, `KanbanCard`, `KanbanId`, `CardSource
 - [x] **0.2.0: Card drag & drop.** Long-press drag, placeholder, auto-scroll, controlled/uncontrolled, callbacks.
 - [x] **0.3.0: Drag customization.** `dragStyle`, custom drag preview and placeholder, activation delay, auto-scroll settings, `canDragCard`/`canDropCard`.
 - [x] **0.4.0: Columns & scale.** Column reordering, card virtualization, 500+ card benchmarks.
-- [ ] **1.0.0: Polish.** ~~Accessibility~~ (done), RTL, tablets, web demo, migration guide from react-kanban.
+- [ ] **1.0.0: Polish.** ~~Accessibility~~, ~~RTL~~ (done), tablets, web demo, migration guide from react-kanban.
 
 ## Example apps
 

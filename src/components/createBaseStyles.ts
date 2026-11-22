@@ -136,9 +136,9 @@ export function createBaseStyles(theme: KanbanTheme): KanbanBaseStyles {
       borderColor: colors.accent,
       backgroundColor: colors.placeholder,
     },
+    // Pinned to the left edge (start or end, by direction) where it renders.
     dragOverlay: {
       position: 'absolute',
-      left: 0,
       top: 0,
       zIndex: 1000,
     },

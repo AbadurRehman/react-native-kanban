@@ -22,6 +22,32 @@ export function moveOverlay(s: DragShared) {
 }
 
 /**
+ * Where a point of the board viewport (measured from its left edge) is in
+ * the scroll content, measured from the start edge: the right one in RTL
+ * boards. Column positions are kept in these start-based terms, like
+ * `boardScrollX`.
+ */
+export function contentFromStart(s: DragShared, viewportX: number): number {
+  'worklet';
+  const fromStartEdge = s.rtl.value
+    ? s.boardViewportWidth.value - viewportX
+    : viewportX;
+  return fromStartEdge + s.boardScrollX.value;
+}
+
+/**
+ * Where a column whose leading edge is `start` into the content (from the
+ * start edge) sits on screen: its left edge, from the board viewport's left.
+ */
+export function columnScreenLeft(s: DragShared, start: number): number {
+  'worklet';
+  const inView = start - s.boardScrollX.value;
+  return s.rtl.value
+    ? s.boardViewportWidth.value - inView - s.columnWidth.value
+    : inView;
+}
+
+/**
  * Finds the column and index under the dragged card's center and, when they
  * change, records them for the drop (spacers react on the UI thread).
  */
@@ -40,7 +66,7 @@ export function updateDragTarget(
   let key = findTargetColumn(
     s.columnOrder.value,
     layouts,
-    x + s.boardScrollX.value,
+    contentFromStart(s, x),
     s.contentLeft.value,
     s.columnStep.value
   );
@@ -101,7 +127,7 @@ export function dropPosition(s: DragShared): { x: number; y: number } | null {
     s.columnStep.value
   );
   return {
-    x: left - s.boardScrollX.value + slot.x,
+    x: columnScreenLeft(s, left) + slot.x,
     y: column.viewportTop - column.scrollY + slot.y,
   };
 }
@@ -122,12 +148,13 @@ export function updateColumnTarget(
   setTarget: (index: number) => void
 ) {
   'worklet';
-  const centerX =
+  const centerX = contentFromStart(
+    s,
     s.fingerX.value -
-    s.boardPageX.value -
-    s.colGrabX.value +
-    s.columnWidth.value / 2 +
-    s.boardScrollX.value;
+      s.boardPageX.value -
+      s.colGrabX.value +
+      s.columnWidth.value / 2
+  );
   const index = columnInsertIndex(
     s.columnOrder.value.length - 1,
     s.contentLeft.value,
@@ -147,10 +174,10 @@ export function updateColumnTarget(
 export function columnDropPosition(s: DragShared): { x: number; y: number } {
   'worklet';
   return {
-    x:
-      s.contentLeft.value +
-      s.colTargetIndex.value * s.columnStep.value -
-      s.boardScrollX.value,
+    x: columnScreenLeft(
+      s,
+      s.contentLeft.value + s.colTargetIndex.value * s.columnStep.value
+    ),
     y: s.colStartY.value,
   };
 }

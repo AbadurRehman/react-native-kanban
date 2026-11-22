@@ -276,7 +276,7 @@ describe('column drag and drop', () => {
     const style = StyleSheet.flatten(original.props.style);
     expect(style).toMatchObject({
       position: 'absolute',
-      left: 16,
+      start: 16, // from the start edge: the right one in RTL boards
       top: 16,
       height: 300,
       backgroundColor: 'transparent',
