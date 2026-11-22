@@ -73,6 +73,9 @@ export function ColumnSpacer({
   return (
     <Animated.View
       testID={end ? 'kanban-column-spacer-end' : 'kanban-column-spacer'}
+      // Drag visuals only: screen readers skip them.
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
       pointerEvents="none"
       style={[
         spacerStyles.clip,

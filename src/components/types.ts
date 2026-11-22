@@ -46,7 +46,40 @@ export interface KanbanStyles {
 export interface KanbanLabels {
   /** Shown in a column with no cards. */
   emptyColumn: string;
+
+  // Screen readers. Functions get plain strings (titles, 1-based positions),
+  // so they're easy to translate.
+  /** A card's place, read after its text: "2 of 5 in To do". */
+  cardPosition: (info: {
+    position: number;
+    count: number;
+    column: string;
+  }) => string;
+  /** A column's card count, read in its header: "5 cards". */
+  cardCount: (count: number) => string;
+  /** Card actions. */
+  moveCardUp: string;
+  moveCardDown: string;
+  moveCardToColumn: (column: string) => string;
+  /** Column header actions. */
+  moveColumnBefore: (column: string) => string;
+  moveColumnAfter: (column: string) => string;
+  /** Announced after a move made with an action. */
+  cardMoved: (info: {
+    card: string;
+    column: string;
+    position: number;
+    count: number;
+  }) => string;
+  columnMoved: (info: {
+    column: string;
+    position: number;
+    count: number;
+  }) => string;
 }
+
+/** How a move happened: a drag, or a screen-reader action. */
+export type KanbanMoveSource = 'drag' | 'accessibility';
 
 export interface CardRenderInfo<TColumn> {
   /** The column the card is in. */
@@ -112,6 +145,8 @@ export interface CardDragEndEvent<TCard> extends CardDragStartEvent<TCard> {
    * was put back where it started.
    */
   destination: CardDestination;
+  /** `'accessibility'` when the card was moved with a screen-reader action. */
+  via: KanbanMoveSource;
 }
 
 export interface ColumnDragStartEvent<TColumn> {
@@ -127,6 +162,8 @@ export interface ColumnDragEndEvent<
    * put back where it started.
    */
   destination: ColumnDestination;
+  /** `'accessibility'` when the column was moved with a screen-reader action. */
+  via: KanbanMoveSource;
 }
 
 /**
@@ -249,6 +286,15 @@ export interface BoardBaseProps<
    * and drop positions. Defaults to the average of the measured cards.
    */
   estimatedCardHeight?: number;
+
+  /**
+   * Turn off the screen-reader actions. By default each card is one
+   * screen-reader element (its text is read together, then its position)
+   * with Move up / Move down / Move to ‹column› actions, and column headers
+   * get Move before / after ‹column›. Turn this off if your cards contain
+   * buttons that screen readers must reach on their own.
+   */
+  disableAccessibilityActions?: boolean;
 
   /** Turn off dragging columns by their header. */
   disableColumnDrag?: boolean;

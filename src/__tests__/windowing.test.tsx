@@ -16,6 +16,9 @@ import {
 import { Board, type BoardBaseProps, type KanbanBoard } from '../index';
 import { layout, queueLift } from '../__fixtures__/dragHarness';
 
+// Drag visuals are hidden from screen readers; tests still look at them.
+const HIDDEN = { includeHiddenElements: true };
+
 /**
  * "todo" holds 300 cards, "done" one. With `estimatedCardHeight` 72 and the
  * 8pt card gap, todo card i starts at 80 * i in the column's scroll content.
@@ -154,11 +157,11 @@ describe('card windowing', () => {
     const todo = within(screen.getByTestId('kanban-column-todo'));
     // One before every rendered card but the lifted one (still mounted); no
     // end spacer, as the window stops before the last card.
-    expect(todo.getAllByTestId('kanban-spacer')).toHaveLength(
+    expect(todo.getAllByTestId('kanban-spacer', HIDDEN)).toHaveLength(
       rendered().length - 1
     );
     expect(rendered().length).toBeLessThan(10);
-    expect(todo.queryByTestId('kanban-spacer-end')).toBeNull();
+    expect(todo.queryByTestId('kanban-spacer-end', HIDDEN)).toBeNull();
     await act(async () => gesture.end());
   });
 });

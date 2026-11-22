@@ -96,6 +96,9 @@ export function ColumnDragOverlay<
   return (
     <Animated.View
       testID="kanban-column-drag-overlay"
+      // Drag visuals only: screen readers skip them.
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
       pointerEvents="none"
       style={[
         overlayStyles.overlay,

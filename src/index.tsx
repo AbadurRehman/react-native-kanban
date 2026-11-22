@@ -11,6 +11,7 @@ export type {
   CardRenderInfo,
   ColumnDragEndEvent,
   ColumnDragStartEvent,
+  KanbanMoveSource,
   ColumnRenderInfo,
   KanbanAutoScroll,
   KanbanDragStyle,
