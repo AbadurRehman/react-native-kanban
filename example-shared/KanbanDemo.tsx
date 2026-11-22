@@ -7,14 +7,15 @@ import {
   useState,
 } from 'react';
 import {
+  I18nManager,
   Platform,
   Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  View,
   useColorScheme,
+  View,
 } from 'react-native';
 import {
   Board,
@@ -37,6 +38,7 @@ import {
   type KanbanTheme,
   type KanbanThemePreset,
 } from 'react-native-kanban';
+import { version as libraryVersion } from '../package.json';
 import { formatBenchmark, useBenchmark } from './benchmark';
 import { initialBoard, makeBenchmarkBoard, type Task } from './data';
 
@@ -46,7 +48,10 @@ import { initialBoard, makeBenchmarkBoard, type Task } from './data';
  * everything from each app's own node_modules.
  */
 
-type WidthMode = 'fixed' | 'fullScreen';
+type WidthMode = 'fixed' | 'fullScreen' | 'responsive';
+// Whole columns of at least 280pt, up to 400pt: one per screen on phones,
+// two to four on tablets.
+const RESPONSIVE_COLUMNS = { min: 280, max: 400 };
 type CardMode = 'custom' | 'default';
 type HeightMode = 'content' | 'fill';
 type DragMode = 'on' | 'off';
@@ -54,18 +59,21 @@ type ColumnDragMode = 'on' | 'off';
 type LiftMode = 'subtle' | 'default' | 'bold';
 type PreviewMode = 'card' | 'compact';
 type LandingMode = 'dashed' | 'tinted';
-type DelayMode = '0ms' | '150ms' | '300ms' | '600ms';
+type DelayMode = 'auto' | '0ms' | '150ms' | '300ms' | '600ms';
 type ScrollMode = 'off' | 'normal' | 'fast';
 type RulesMode = 'off' | 'on';
 type DataMode = 'demo' | '500' | '1000' | '2000';
 type VirtualizeMode = 'on' | 'off';
+type DirectionMode = 'ltr' | 'rtl';
 
 const LIFT_STYLES: Record<LiftMode, KanbanDragStyle | undefined> = {
   subtle: { scale: 1.01, rotation: 0 },
   default: undefined,
   bold: { scale: 1.08, rotation: 4, opacity: 0.9 },
 };
-const DELAYS: Record<DelayMode, number> = {
+// 'auto': the library default (300 ms; on web with a mouse, on movement).
+const DELAYS: Record<DelayMode, number | undefined> = {
+  'auto': undefined,
   '0ms': 0,
   '150ms': 150,
   '300ms': 300,
@@ -115,16 +123,22 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
   const [liftMode, setLiftMode] = useState<LiftMode>('default');
   const [previewMode, setPreviewMode] = useState<PreviewMode>('card');
   const [landingMode, setLandingMode] = useState<LandingMode>('dashed');
-  const [delayMode, setDelayMode] = useState<DelayMode>('300ms');
+  const [delayMode, setDelayMode] = useState<DelayMode>('auto');
   const [scrollMode, setScrollMode] = useState<ScrollMode>('normal');
   const [rulesMode, setRulesMode] = useState<RulesMode>('off');
   const [columnDragMode, setColumnDragMode] = useState<ColumnDragMode>('on');
   const [dataMode, setDataMode] = useState<DataMode>('demo');
   const [virtualizeMode, setVirtualizeMode] = useState<VirtualizeMode>('on');
+  // Right to left without restarting the app: only the board flips.
+  const [directionMode, setDirectionMode] = useState<DirectionMode>(
+    I18nManager.isRTL ? 'rtl' : 'ltr'
+  );
   const [board, setBoard] = useState(initialBoard);
   const bench = useBenchmark(dataMode !== 'demo');
   const [lastEvent, setLastEvent] = useState(
-    'Long-press a card or a column header to drag it.'
+    Platform.OS === 'web'
+      ? 'Drag a card or a column header (long-press on touch screens).'
+      : 'Long-press a card or a column header to drag it.'
   );
   const nextId = useRef(1);
 
@@ -268,7 +282,9 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
       <View style={[styles.header, { paddingTop: TOP_INSET }]}>
         <View style={styles.headerText}>
           <Text style={chrome.title}>react-native-kanban</Text>
-          <Text style={chrome.subtitle}>v0.4 demo · {platformLabel}</Text>
+          <Text style={chrome.subtitle}>
+            v{libraryVersion} · {platformLabel}
+          </Text>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -309,6 +325,13 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
           theme={theme}
         />
         <Segmented
+          label="Direction"
+          value={directionMode}
+          options={['ltr', 'rtl']}
+          onChange={setDirectionMode}
+          theme={theme}
+        />
+        <Segmented
           label="Virtualize"
           value={virtualizeMode}
           options={['on', 'off']}
@@ -332,7 +355,7 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
         <Segmented
           label="Columns"
           value={widthMode}
-          options={['fixed', 'fullScreen']}
+          options={['fixed', 'fullScreen', 'responsive']}
           onChange={setWidthMode}
           theme={theme}
         />
@@ -392,7 +415,7 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
             <Segmented
               label="Hold to drag"
               value={delayMode}
-              options={['0ms', '150ms', '300ms', '600ms']}
+              options={['auto', '0ms', '150ms', '300ms', '600ms']}
               onChange={setDelayMode}
               theme={theme}
             />
@@ -445,12 +468,19 @@ export function KanbanDemo({ platformLabel, onSchemeChange }: KanbanDemoProps) {
 
       <Profiler id="board" onRender={bench.onRender}>
         <Board
-          key={`${dataMode}-${virtualizeMode}`}
+          key={`${dataMode}-${virtualizeMode}-${directionMode}`}
+          direction={directionMode}
           virtualize={virtualizeMode === 'on'}
           board={board}
           theme={themeMode}
           density={density}
-          columnWidth={widthMode === 'fullScreen' ? 'fullScreen' : undefined}
+          columnWidth={
+            widthMode === 'fullScreen'
+              ? 'fullScreen'
+              : widthMode === 'responsive'
+                ? RESPONSIVE_COLUMNS
+                : undefined
+          }
           columnHeight={heightMode}
           renderCard={cardMode === 'custom' ? renderCard : undefined}
           renderColumnFooter={renderColumnFooter}

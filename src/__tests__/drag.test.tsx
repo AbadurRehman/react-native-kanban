@@ -21,6 +21,9 @@ import {
   titlesIn,
 } from '../__fixtures__/dragHarness';
 
+// Drag visuals are hidden from screen readers; tests still look at them.
+const HIDDEN = { includeHiddenElements: true };
+
 describe('drag and drop', () => {
   it('moves a card to another column (uncontrolled)', async () => {
     const onBoardChange = jest.fn();
@@ -50,12 +53,13 @@ describe('drag and drop', () => {
       card: initial.columns[0]!.cards[0],
       source: { fromColumnId: 'todo', fromPosition: 0 },
       destination: { toColumnId: 'done', toPosition: 0 },
+      via: 'drag',
     });
     expect(onBoardChange).toHaveBeenCalledTimes(1);
     expect(titlesIn('todo')).toEqual(['2']);
     expect(titlesIn('done')).toEqual(['1']);
-    expect(screen.queryByTestId('kanban-drag-overlay')).toBeNull();
-    expect(screen.queryByTestId('kanban-placeholder')).toBeNull();
+    expect(screen.queryByTestId('kanban-drag-overlay', HIDDEN)).toBeNull();
+    expect(screen.queryByTestId('kanban-placeholder', HIDDEN)).toBeNull();
   });
 
   it('reorders within a column', async () => {
@@ -203,7 +207,7 @@ describe('drag and drop', () => {
     });
 
     // The card floats above the board...
-    expect(screen.getByTestId('kanban-drag-overlay')).toBeTruthy();
+    expect(screen.getByTestId('kanban-drag-overlay', HIDDEN)).toBeTruthy();
     // ...while its original view stays mounted and out of the layout. It must
     // stay hit-testable (iOS cancels the gesture otherwise): only content fades.
     const original = screen.getByTestId('kanban-card-1');
@@ -222,16 +226,16 @@ describe('drag and drop', () => {
     // Landing spots: one before card 2 and one at the end of "todo", and the
     // empty "done" column becomes a drop zone.
     const todo = within(screen.getByTestId('kanban-column-todo'));
-    expect(todo.getAllByTestId('kanban-spacer')).toHaveLength(1);
-    expect(todo.getByTestId('kanban-spacer-end')).toBeTruthy();
+    expect(todo.getAllByTestId('kanban-spacer', HIDDEN)).toHaveLength(1);
+    expect(todo.getByTestId('kanban-spacer-end', HIDDEN)).toBeTruthy();
     expect(screen.getByTestId('kanban-empty-column')).toBeTruthy();
 
     await act(async () => {
       gesture.update({ absoluteX: 400, absoluteY: 120 });
       gesture.end();
     });
-    expect(screen.queryByTestId('kanban-drag-overlay')).toBeNull();
-    expect(screen.queryByTestId('kanban-spacer')).toBeNull();
+    expect(screen.queryByTestId('kanban-drag-overlay', HIDDEN)).toBeNull();
+    expect(screen.queryByTestId('kanban-spacer', HIDDEN)).toBeNull();
     expect(titlesIn('done')).toEqual(['1']);
   });
 

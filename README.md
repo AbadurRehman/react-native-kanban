@@ -4,7 +4,9 @@
 [![CI](https://github.com/AbadurRehman/react-native-kanban/actions/workflows/ci.yml/badge.svg)](https://github.com/AbadurRehman/react-native-kanban/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/react-native-kanban.svg)](./LICENSE)
 
-Customizable drag-and-drop Kanban board for React Native, built on [Reanimated](https://docs.swmansion.com/react-native-reanimated/) and [Gesture Handler](https://docs.swmansion.com/react-native-gesture-handler/). Inspired by [react-kanban](https://github.com/lourenci/react-kanban), so the data model will feel familiar if you've used it on the web.
+**[▶ Try the live demo](https://abadurrehman.github.io/react-native-kanban/)** in your browser: drag cards and columns, switch themes, RTL, tablet widths and a 2000-card board.
+
+Customizable drag-and-drop Kanban board for React Native, built on [Reanimated](https://docs.swmansion.com/react-native-reanimated/) and [Gesture Handler](https://docs.swmansion.com/react-native-gesture-handler/). Inspired by [react-kanban](https://github.com/lourenci/react-kanban), so the data model will feel familiar if you've used it on the web. Coming from react-kanban? See the [migration guide](./docs/migrating-from-react-kanban.md).
 
 > ⚠️ **Work in progress.** `0.4.x` adds column reordering and fast large boards: columns only render the cards near the screen. See the [roadmap](#roadmap).
 
@@ -97,9 +99,9 @@ The board fills its parent, so give the parent a size (for example `flex: 1`).
 | `initialBoard` | `KanbanBoard` | | The starting board; the component keeps its own state (uncontrolled). |
 | `onBoardChange` | `(board) => void` | | Uncontrolled only: called with the new board after each drop that changes it. |
 | `onCardDragStart` | `({ card, source }) => void` | | A card was lifted. A good place for haptics. |
-| `onCardDragEnd` | `({ card, source, destination }) => void` | | A card was dropped. In controlled mode, apply it with `moveCard`. |
+| `onCardDragEnd` | `({ card, source, destination, via }) => void` | | A card was dropped, or moved with a screen-reader action (`via: 'accessibility'`). In controlled mode, apply it with `moveCard`. |
 | `disableCardDrag` | `boolean` | `false` | Turn off long-press dragging. |
-| `dragActivationDelay` | `number` | `300` | How long to press before a card lifts, in ms. `0` lifts on the first movement. |
+| `dragActivationDelay` | `number` | `300` (`0` on web with a mouse) | How long to press before a card lifts, in ms. `0` lifts on the first movement. |
 | `canDragCard` | `(card, column) => boolean` | | Return `false` to lock a card in place. |
 | `canDropCard` | `({ card, fromColumn, toColumn }) => boolean` | | Return `false` to keep a card out of a column. |
 | `dragStyle` | `{ scale?, rotation?, opacity? }` | `{ scale: 1.03, rotation: 2, opacity: 1 }` | How the floating card looks at full lift. |
@@ -112,14 +114,16 @@ The board fills its parent, so give the parent a size (for example `flex: 1`).
 | `canDragColumn` | `(column) => boolean` | | Return `false` to lock a column's header. Other columns can still move past it. |
 | `virtualize` | `boolean` | `true` | Render only the cards near each column's viewport. `false` keeps every card mounted. |
 | `estimatedCardHeight` | `number` | average measured height | Height assumed for cards not rendered yet. |
+| `direction` | `'ltr' \| 'rtl'` | app direction | Right to left puts the first column on the right and mirrors dragging (see [Right-to-left](#right-to-left)). |
+| `disableAccessibilityActions` | `boolean` | `false` | Turn off the screen-reader Move actions and card grouping (see [Accessibility](#accessibility)). |
 | `theme` | `'light' \| 'dark' \| 'auto' \| KanbanThemeInput` | `'light'` | Preset or custom theme. `'auto'` follows the device. |
 | `density` | `'comfortable' \| 'compact'` | `'comfortable'` | Compact tightens spacing and type. |
-| `columnWidth` | `number \| 'fullScreen'` | `280` (`240` compact) | `'fullScreen'` shows one column per screen. |
+| `columnWidth` | `number \| 'fullScreen' \| { min, max? }` | `280` (`240` compact) | `'fullScreen'` shows one column per screen; `{ min, max }` fits whole columns to the screen (see [Tablets](#tablets-and-rotation)). |
 | `columnHeight` | `'content' \| 'fill'` | `'content'` | Size columns to their cards, or stretch them to the board height. |
 | `snapToColumns` | `boolean` | `true` for `'fullScreen'` | Snap horizontal scrolling to columns. |
 | `showCardCount` | `boolean` | `true` | Count badge next to column titles. |
 | `styles` | `KanbanStyles` | | Style overrides for each part (see below). |
-| `labels` | `Partial<KanbanLabels>` | | Translatable strings, e.g. `{ emptyColumn: 'Sin tarjetas' }`. |
+| `labels` | `Partial<KanbanLabels>` | | Translatable strings, e.g. `{ emptyColumn: 'Sin tarjetas' }` (all keys under [Accessibility](#accessibility)). |
 | `renderCard` | `(card, { column, index, theme }) => ReactNode` | | Replace the default card. |
 | `renderColumnHeader` | `(column, { index, cardCount, theme }) => ReactNode` | | Replace the title + count header. |
 | `renderColumnFooter` | `(column, info) => ReactNode` | | Render under a column's cards, e.g. an "Add card" button. |
@@ -131,7 +135,7 @@ Wrap render props in `useCallback` so unchanged columns and cards skip re-render
 
 ## Drag and drop
 
-- **Lift:** press and hold a card for 300 ms (`dragActivationDelay`). Moving your finger before that scrolls instead, so drags and scrolls don't fight.
+- **Lift:** press and hold a card for 300 ms (`dragActivationDelay`). Moving your finger before that scrolls instead, so drags and scrolls don't fight. On web with a mouse or trackpad, drags start as soon as the pointer moves, like desktop apps; touch screens keep the long press.
 - **Move:** the card follows your finger on the UI thread. A dashed landing spot opens where it will go, and the other cards slide out of the way. Empty columns light up as drop zones.
 - **Auto-scroll:** drag near the left or right edge to scroll the board, or near a column's top or bottom to scroll that column.
 - **Drop:** the card glides into its spot. `source` and `destination` use the same shape as `moveCard`:
@@ -230,6 +234,76 @@ Tips:
 - Cards are laid out before they're measured using `estimatedCardHeight` (the average of measured cards by default). Set it if your cards are much taller or shorter than average so the first scroll is accurate.
 - Keep `renderCard` cheap and wrapped in `useCallback`: cards mount while you scroll.
 - `virtualize={false}` keeps every card mounted. Use it for small boards that should be fully reachable by screen readers.
+
+## Accessibility
+
+Boards work with VoiceOver and TalkBack without extra code:
+
+- **Cards** are read as one element: their text, then their place ("Fix login bug, 2 of 5 in To do"). They're buttons when `onCardPress` is set.
+- **Moving without dragging:** each card has the actions **Move up**, **Move down** and **Move to ‹column›** for the nearest column on each side. Column headers are headings ("To do, 5 cards") with **Move before / after ‹column›**. Swipe up or down on iOS, or open the actions menu on Android.
+- Moves follow the same rules as drags: locked cards (`canDragCard`, `disableCardDrag`) and columns (`canDragColumn`, `disableColumnDrag`) offer no moves, and columns that turn a card away (`canDropCard`) are skipped.
+- A move calls `onCardDragEnd` / `onColumnDragEnd` with `via: 'accessibility'`, so controlled boards need no extra code. The result is announced ("Moved Fix login bug to Doing, 1 of 3") and focus stays on the moved item.
+- Drag visuals (the floating copy and landing spots) are hidden from screen readers.
+- With **Reduce Motion** turned on, lifts, landing spots and drops skip their animations.
+
+Custom cards are read the same way. Set an `accessibilityLabel` on your card's root view to choose what's read. If your cards contain their own buttons that screen readers must reach separately, set `disableAccessibilityActions`.
+
+Translate everything with `labels`:
+
+```tsx
+<Board
+  labels={{
+    emptyColumn: 'Keine Karten',
+    cardPosition: ({ position, count, column }) =>
+      `${position} von ${count} in ${column}`,
+    cardCount: (count) => (count === 1 ? '1 Karte' : `${count} Karten`),
+    moveCardUp: 'Nach oben',
+    moveCardDown: 'Nach unten',
+    moveCardToColumn: (column) => `Nach ${column} verschieben`,
+    moveColumnBefore: (column) => `Vor ${column} verschieben`,
+    moveColumnAfter: (column) => `Hinter ${column} verschieben`,
+    cardMoved: ({ card, column, position, count }) =>
+      `${card} nach ${column} verschoben, ${position} von ${count}`,
+    columnMoved: ({ column, position, count }) =>
+      `${column} an Position ${position} von ${count} verschoben`,
+  }}
+/>
+```
+
+## Tablets and rotation
+
+Fixed-width columns leave empty space on big screens. Give `columnWidth` a range instead:
+
+```tsx
+<Board board={board} columnWidth={{ min: 280, max: 400 }} />
+```
+
+The board fits as many whole columns of at least `min` as its width allows and shares the room between them, up to `max` each:
+
+| Screen | Columns in view | Width |
+| --- | --- | --- |
+| Phone (390 pt) | 1 | 358 |
+| iPad portrait (820 pt) | 2 | 388 |
+| iPad landscape (1180 pt) | 3 | 374 |
+| iPad Pro landscape (1366 pt) | 4 | 324 |
+
+It uses the board's own width, so it re-fits on rotation, in split view and in resizable windows. A board with fewer columns than fit shares the width among them (up to `max`). Add `snapToColumns` to page through columns.
+
+## Right-to-left
+
+In apps running right to left (Urdu, Arabic, Hebrew, …), the board follows `I18nManager.isRTL`:
+
+- The first column sits on the right, and the board starts scrolled to it.
+- Dragging, landing spots, auto-scroll and drop animations are mirrored.
+- Column headers and cards lay out right to left.
+
+Set `direction` to override it for one board, or on web, where `I18nManager` always reports left to right:
+
+```tsx
+<Board board={board} direction="rtl" />
+```
+
+Moves are reported the same way in both directions: positions count from the first column and the first card.
 
 ## Theming
 
@@ -345,8 +419,8 @@ Data types: `KanbanBoard`, `KanbanColumn`, `KanbanCard`, `KanbanId`, `CardSource
 - [x] **0.1.0: Static board + theming.** `<Board />`, theme presets, style overrides, render props, layout options, helpers.
 - [x] **0.2.0: Card drag & drop.** Long-press drag, placeholder, auto-scroll, controlled/uncontrolled, callbacks.
 - [x] **0.3.0: Drag customization.** `dragStyle`, custom drag preview and placeholder, activation delay, auto-scroll settings, `canDragCard`/`canDropCard`.
-- [ ] **0.4.0: Columns & scale.** Column reordering, card virtualization, 500+ card benchmarks.
-- [ ] **1.0.0: Polish.** Accessibility, RTL, tablets, web demo, migration guide from react-kanban.
+- [x] **0.4.0: Columns & scale.** Column reordering, card virtualization, 500+ card benchmarks.
+- [ ] **1.0.0: Polish.** Accessibility, RTL, tablets, a web demo and a [migration guide](./docs/migrating-from-react-kanban.md) from react-kanban (all done; release next).
 
 ## Example apps
 
@@ -357,7 +431,7 @@ This repo has two example apps that use the library straight from `src/`. Both r
 | React Native CLI | [`example/`](./example) | `yarn example android` / `yarn example ios` |
 | Expo | [`example-expo/`](./example-expo) | `yarn example:expo android` / `yarn example:expo ios` / `yarn example:expo web` |
 
-CI builds both apps on Android and iOS, plus the Expo app for web, on every PR.
+CI builds both apps on Android and iOS, plus the Expo app for web, on every PR. Every push to `main` publishes the Expo app's web build as the [live demo](https://abadurrehman.github.io/react-native-kanban/) (GitHub Pages, `.github/workflows/pages.yml`).
 
 ## Contributing
 

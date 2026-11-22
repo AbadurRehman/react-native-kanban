@@ -73,6 +73,9 @@ export function Spacer({
   return (
     <Animated.View
       testID={end ? 'kanban-spacer-end' : 'kanban-spacer'}
+      // Drag visuals only: screen readers skip them.
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
       pointerEvents="none"
       style={[
         spacerStyles.clip,

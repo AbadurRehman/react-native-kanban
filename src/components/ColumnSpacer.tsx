@@ -73,10 +73,13 @@ export function ColumnSpacer({
   return (
     <Animated.View
       testID={end ? 'kanban-column-spacer-end' : 'kanban-column-spacer'}
+      // Drag visuals only: screen readers skip them.
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
       pointerEvents="none"
       style={[
         spacerStyles.clip,
-        end ? { marginLeft: -gap } : { marginRight: -gap },
+        end ? { marginStart: -gap } : { marginEnd: -gap },
         animatedStyle,
       ]}
     >
@@ -85,7 +88,7 @@ export function ColumnSpacer({
         style={[
           base.columnPlaceholder,
           { width: boxWidth, height: boxHeight },
-          end ? { marginLeft: gap } : null,
+          end ? { marginStart: gap } : null,
           styles?.columnPlaceholder,
         ]}
       />

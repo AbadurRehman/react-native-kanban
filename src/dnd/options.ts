@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import type { KanbanAutoScroll, KanbanDragStyle } from '../components/types';
 import {
   EDGE_X,
@@ -57,5 +58,20 @@ export function resolveAutoScroll(
 
 /** Long-press delay in ms; `0` means drag on the first movement. */
 export function resolveActivationDelay(delay: number | undefined): number {
-  return isNumber(delay) && delay >= 0 ? delay : LONG_PRESS_MS;
+  if (isNumber(delay) && delay >= 0) return delay;
+  return hasFinePointer() ? 0 : LONG_PRESS_MS;
+}
+
+/**
+ * On web with a mouse or trackpad, drags start on movement like in desktop
+ * apps; touch screens keep the long press so columns can still scroll.
+ */
+function hasFinePointer(): boolean {
+  if (Platform.OS !== 'web') return false;
+  const media = (
+    globalThis as {
+      matchMedia?: (query: string) => { matches: boolean };
+    }
+  ).matchMedia;
+  return media?.('(pointer: fine)').matches === true;
 }

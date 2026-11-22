@@ -14,6 +14,9 @@ import {
   titlesIn,
 } from '../__fixtures__/dragHarness';
 
+// Drag visuals are hidden from screen readers; tests still look at them.
+const HIDDEN = { includeHiddenElements: true };
+
 const gestureConfig = (id: number) =>
   (
     getByGestureTestId(`kanban-card-drag-${id}`) as unknown as {
@@ -80,6 +83,8 @@ describe('canDropCard', () => {
   it('asks once per column when a drag starts', async () => {
     const canDropCard = jest.fn(() => true);
     await renderBoard({ canDropCard });
+    // Cards also ask while rendering, for their Move actions.
+    canDropCard.mockClear();
     await drag(1, [
       [100, 80],
       [101, 81],
@@ -134,12 +139,14 @@ describe('renderDragPreview', () => {
       ),
     });
     await liftCard1();
-    const overlay = within(screen.getByTestId('kanban-drag-overlay'));
-    expect(overlay.getByTestId('preview').props.children).toBe('1 from todo');
-    expect(overlay.queryByTestId('card-1')).toBeNull();
+    const overlay = within(screen.getByTestId('kanban-drag-overlay', HIDDEN));
+    expect(overlay.getByTestId('preview', HIDDEN).props.children).toBe(
+      '1 from todo'
+    );
+    expect(overlay.queryByTestId('card-1', HIDDEN)).toBeNull();
     // The preview brings its own look: no default lifted shadow around it.
     const style = StyleSheet.flatten(
-      screen.getByTestId('kanban-drag-overlay').props.style
+      screen.getByTestId('kanban-drag-overlay', HIDDEN).props.style
     );
     expect(style.boxShadow).toBeUndefined();
   });
@@ -149,10 +156,10 @@ describe('renderDragPreview', () => {
       renderCard: (card) => <Text testID={`card-${card.id}`}>{card.id}</Text>,
     });
     await liftCard1();
-    const overlay = within(screen.getByTestId('kanban-drag-overlay'));
-    expect(overlay.getByTestId('card-1')).toBeTruthy();
+    const overlay = within(screen.getByTestId('kanban-drag-overlay', HIDDEN));
+    expect(overlay.getByTestId('card-1', HIDDEN)).toBeTruthy();
     const style = StyleSheet.flatten(
-      screen.getByTestId('kanban-drag-overlay').props.style
+      screen.getByTestId('kanban-drag-overlay', HIDDEN).props.style
     );
     expect(style.boxShadow).toBeDefined();
   });
@@ -171,19 +178,21 @@ describe('renderPlaceholder', () => {
       })
     );
     const todo = within(screen.getByTestId('kanban-column-todo'));
-    const spots = todo.getAllByTestId('kanban-placeholder-custom');
+    const spots = todo.getAllByTestId('kanban-placeholder-custom', HIDDEN);
     // One per spacer in "todo": before card 2, and at the end.
     expect(spots).toHaveLength(2);
     expect(StyleSheet.flatten(spots[0]!.props.style)).toMatchObject({
       height: 60,
     });
-    expect(todo.getAllByTestId('my-landing-spot')).toHaveLength(2);
+    expect(todo.getAllByTestId('my-landing-spot', HIDDEN)).toHaveLength(2);
   });
 });
 
 describe('dragStyle', () => {
   const overlayStyle = () =>
-    StyleSheet.flatten(screen.getByTestId('kanban-drag-overlay').props.style);
+    StyleSheet.flatten(
+      screen.getByTestId('kanban-drag-overlay', HIDDEN).props.style
+    );
 
   it('lifts with a slight scale and tilt by default', async () => {
     await renderBoard();

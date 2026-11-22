@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import {
+  Platform,
   StyleSheet,
   useWindowDimensions,
   type LayoutChangeEvent,
@@ -45,9 +46,21 @@ import {
   buildColumnItems,
   clampScroll,
   keyOf,
+  responsiveColumnWidth,
   type ColumnLayout,
   type Rect,
 } from '../dnd/geometry';
+import { A11yProvider, type KanbanA11y } from '../a11y/A11yContext';
+import { announce } from '../a11y/announce';
+import {
+  cardActionTarget,
+  cardMoves,
+  columnActionTarget,
+  titleOf,
+  type CardActionName,
+  type ColumnActionName,
+} from '../a11y/moves';
+import { appDirection, leftEdge, swapsLeftAndRight } from '../dnd/direction';
 import { moveCard, moveColumn } from '../helpers';
 import {
   KanbanThemeProvider,
@@ -83,7 +96,53 @@ const DEFAULT_COLUMN_WIDTH = { comfortable: 280, compact: 240 } as const;
 
 const DEFAULT_LABELS: KanbanLabels = {
   emptyColumn: 'No cards',
+  cardPosition: ({ position, count, column }) =>
+    `${position} of ${count} in ${column}`,
+  cardCount: (count) => (count === 1 ? '1 card' : `${count} cards`),
+  moveCardUp: 'Move up',
+  moveCardDown: 'Move down',
+  moveCardToColumn: (column) => `Move to ${column}`,
+  moveColumnBefore: (column) => `Move before ${column}`,
+  moveColumnAfter: (column) => `Move after ${column}`,
+  cardMoved: ({ card, column, position, count }) =>
+    `Moved ${card} to ${column}, ${position} of ${count}`,
+  columnMoved: ({ column, position, count }) =>
+    `Moved ${column} to position ${position} of ${count}`,
 };
+
+/**
+ * Labels merged over the defaults. Keeps the same object while the given
+ * labels are the same, so an inline `labels={{ ... }}` doesn't re-render
+ * every card.
+ */
+function useLabels(given: Partial<KanbanLabels> | undefined): KanbanLabels {
+  const last = useRef<{
+    given: Partial<KanbanLabels> | undefined;
+    merged: KanbanLabels;
+  } | null>(null);
+  const previous = last.current;
+  if (previous && sameLabels(previous.given, given)) return previous.merged;
+  const merged = { ...DEFAULT_LABELS };
+  for (const key of Object.keys(given ?? {}) as (keyof KanbanLabels)[]) {
+    const value = given![key];
+    if (value !== undefined) (merged as Record<string, unknown>)[key] = value;
+  }
+  last.current = { given, merged };
+  return merged;
+}
+
+function sameLabels(
+  a: Partial<KanbanLabels> | undefined,
+  b: Partial<KanbanLabels> | undefined
+) {
+  if (a === b) return true;
+  const keys = new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})]);
+  for (const key of keys) {
+    const k = key as keyof KanbanLabels;
+    if (a?.[k] !== b?.[k]) return false;
+  }
+  return true;
+}
 
 const EMPTY_BOARD = { columns: [] };
 
@@ -159,6 +218,8 @@ export function Board<
     canDragColumn,
     onColumnDragStart,
     onColumnDragEnd,
+    disableAccessibilityActions = false,
+    direction: directionProp,
     style,
     testID = 'kanban-board',
   } = props;
@@ -173,14 +234,7 @@ export function Board<
   // --- Theme & styles ---
   const theme = useResolvedKanbanTheme(themeProp, density);
   const base = useMemo(() => createBaseStyles(theme), [theme]);
-  const emptyColumnLabel = labelsProp?.emptyColumn;
-  const labels = useMemo<KanbanLabels>(
-    () => ({
-      ...DEFAULT_LABELS,
-      ...(emptyColumnLabel !== undefined && { emptyColumn: emptyColumnLabel }),
-    }),
-    [emptyColumnLabel]
-  );
+  const labels = useLabels(labelsProp);
 
   // --- Shared drag state (UI thread) ---
   const boardRef = useAnimatedRef<View>();
@@ -202,6 +256,12 @@ export function Board<
   const boardScrollX = useSharedValue(0);
   const boardViewportWidth = useSharedValue(0);
   const boardContentWidth = useSharedValue(0);
+  const direction = directionProp ?? appDirection();
+  const isRTL = direction === 'rtl';
+  const rtl = useSharedValue(isRTL);
+  useEffect(() => {
+    rtl.value = isRTL;
+  }, [rtl, isRTL]);
   const targetKey = useSharedValue<string | null>(null);
   const targetIndex = useSharedValue(0);
   const sourceKey = useSharedValue<string | null>(null);
@@ -268,6 +328,7 @@ export function Board<
       boardScrollX,
       boardViewportWidth,
       boardContentWidth,
+      rtl,
       targetKey,
       targetIndex,
       sourceKey,
@@ -314,6 +375,7 @@ export function Board<
       boardScrollX,
       boardViewportWidth,
       boardContentWidth,
+      rtl,
       targetKey,
       targetIndex,
       sourceKey,
@@ -489,6 +551,7 @@ export function Board<
           card: finished.card,
           source,
           destination,
+          via: 'drag',
         };
         onEnd?.(event);
         setDrag(null);
@@ -551,6 +614,7 @@ export function Board<
           column: finished.column,
           source,
           destination,
+          via: 'drag',
         };
         onEnd?.(event);
         setColumnDrag(null);
@@ -589,14 +653,20 @@ export function Board<
         scrollSpeed.value
       ) * frames;
     if (speed === 0) return;
+    // `speed` is physical (positive: towards the right edge); the scroll is
+    // kept from the start edge, which is the right one in RTL boards.
+    const max = Math.max(0, boardContentWidth.value - boardViewportWidth.value);
     const next = clampScroll(
-      boardScrollX.value + speed,
+      boardScrollX.value + (rtl.value ? -speed : speed),
       boardContentWidth.value,
       boardViewportWidth.value
     );
     if (next === boardScrollX.value) return;
     boardScrollX.value = next;
-    scrollTo(boardScrollRef, next, 0, false);
+    // Native scroll views take offsets from the left; RTL ones on web count
+    // from the right edge, from 0 down.
+    const offset = !rtl.value ? next : IS_WEB ? -next : max - next;
+    scrollTo(boardScrollRef, offset, 0, false);
     if (draggingColumn) {
       updateColumnTarget(shared, actions.setColumnTarget);
     } else {
@@ -651,9 +721,19 @@ export function Board<
   );
   const handleBoardScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      boardScrollX.value = event.nativeEvent.contentOffset.x;
+      const { contentOffset, contentSize, layoutMeasurement } =
+        event.nativeEvent;
+      // Kept from the start edge. Native scroll views report offsets from
+      // the left (in RTL that is the far end); RTL ones on web count from
+      // the right edge, from 0 down.
+      const x = contentOffset.x;
+      boardScrollX.value = !isRTL
+        ? x
+        : IS_WEB
+          ? -x
+          : Math.max(0, contentSize.width - layoutMeasurement.width) - x;
     },
-    [boardScrollX]
+    [boardScrollX, isRTL]
   );
   const handleBoardContentSize = useCallback(
     (width: number) => {
@@ -662,29 +742,63 @@ export function Board<
     [boardContentWidth]
   );
 
-  const isFullScreen = columnWidth === 'fullScreen';
-  const resolvedColumnWidth = isFullScreen
-    ? Math.max(
-        0,
-        (boardSize?.width ?? windowWidth) - theme.spacing.boardPadding * 2
-      )
-    : (columnWidth ?? DEFAULT_COLUMN_WIDTH[theme.density]);
   // Where columns sit in the scroll content: positions come from these and
   // the column order, never from measurements (see findTargetColumn).
   const boardContentStyle = useMemo(
     () => StyleSheet.flatten([base.boardContent, styles?.boardContent]) ?? {},
     [base.boardContent, styles?.boardContent]
   );
-  const boardLeft = numberOr(
-    boardContentStyle.paddingLeft ??
-      boardContentStyle.paddingHorizontal ??
-      boardContentStyle.padding,
-    0
-  );
+  const horizontalPadding = (side: 'start' | 'end') => {
+    const logical =
+      side === 'start'
+        ? boardContentStyle.paddingStart
+        : boardContentStyle.paddingEnd;
+    // On native, left/right mean start/end; on web they stay physical.
+    const leftIsStart = !isRTL || swapsLeftAndRight;
+    const physical =
+      (side === 'start') === leftIsStart
+        ? boardContentStyle.paddingLeft
+        : boardContentStyle.paddingRight;
+    return numberOr(
+      logical ??
+        physical ??
+        boardContentStyle.paddingHorizontal ??
+        boardContentStyle.padding,
+      0
+    );
+  };
+  // Padding on the start edge (the right one in RTL boards).
+  const boardLeft = horizontalPadding('start');
+  const boardEnd = horizontalPadding('end');
   const columnGap = numberOr(
     boardContentStyle.columnGap ?? boardContentStyle.gap,
     0
   );
+
+  const isFullScreen = columnWidth === 'fullScreen';
+  const responsiveWidth =
+    typeof columnWidth === 'object' && columnWidth !== null
+      ? columnWidth
+      : null;
+  // Room for columns: the board's width (re-measured on rotation and in
+  // split view) minus its padding.
+  const available = Math.max(
+    0,
+    (boardSize?.width ?? windowWidth) - boardLeft - boardEnd
+  );
+  const resolvedColumnWidth = isFullScreen
+    ? available
+    : responsiveWidth
+      ? responsiveColumnWidth(
+          available,
+          columnGap,
+          board.columns.length,
+          responsiveWidth.min,
+          responsiveWidth.max
+        )
+      : typeof columnWidth === 'number'
+        ? columnWidth
+        : DEFAULT_COLUMN_WIDTH[theme.density];
   const step = resolvedColumnWidth + columnGap;
   useEffect(() => {
     contentLeft.value = boardLeft;
@@ -733,129 +847,324 @@ export function Board<
     [board.columns, isColumnDragging, columnDrag]
   );
 
+  // --- Screen-reader actions: move cards and columns without dragging ---
+  // Cards read the board while they render (the layout effect that updates
+  // `latest` runs after them).
+  const boardNow = useRef(board);
+  boardNow.current = board;
+  const a11yFocus = useRef<string | null>(null);
+  // Cards and headers re-read their actions when columns are added, removed,
+  // reordered or renamed, or the drop rules are switched on or off.
+  const columnsKey = board.columns
+    .map((column) => `${keyOf(column.id)}\u0001${column.title ?? ''}`)
+    .join('\u0002');
+  const hasDropRule = canDropCard !== undefined;
+  const a11y = useMemo<KanbanA11y>(() => {
+    // Whether `card` (in column `from`) may go to column `to`, by the rules
+    // in effect when asked.
+    const acceptsFrom =
+      (
+        columns: readonly TColumn[],
+        card: KanbanCard,
+        from: number,
+        rule: BoardBaseProps<TCard, TColumn>['canDropCard']
+      ) =>
+      (to: number) =>
+        !rule ||
+        rule({
+          card: card as TCard,
+          fromColumn: columns[from]!,
+          toColumn: columns[to]!,
+        });
+
+    return {
+      enabled: !disableAccessibilityActions,
+      labels,
+      focusTarget: a11yFocus,
+
+      cardActions(card, column, index) {
+        const columns = boardNow.current.columns;
+        const from = columns.findIndex((c) => c.id === column.id);
+        if (from < 0) return [];
+        const moves = cardMoves(
+          columns,
+          from,
+          index,
+          acceptsFrom(columns, card, from, latest.current.canDropCard)
+        );
+        const list = [];
+        if (moves.up) list.push({ name: 'moveUp', label: labels.moveCardUp });
+        if (moves.down) {
+          list.push({ name: 'moveDown', label: labels.moveCardDown });
+        }
+        if (moves.previous >= 0) {
+          list.push({
+            name: 'moveToPreviousColumn',
+            label: labels.moveCardToColumn(titleOf(columns[moves.previous]!)),
+          });
+        }
+        if (moves.next >= 0) {
+          list.push({
+            name: 'moveToNextColumn',
+            label: labels.moveCardToColumn(titleOf(columns[moves.next]!)),
+          });
+        }
+        return list;
+      },
+
+      performCardAction(card, column, index, action: CardActionName) {
+        const {
+          board: current,
+          isControlled: controlled,
+          canDropCard: rule,
+          onCardDragEnd: onEnd,
+          onBoardChange,
+        } = latest.current;
+        const columns = current.columns;
+        const from = columns.findIndex((c) => c.id === column.id);
+        if (from < 0 || columns[from]!.cards[index]?.id !== card.id) return;
+        const target = cardActionTarget(
+          columns,
+          from,
+          index,
+          action,
+          acceptsFrom(columns, card, from, rule)
+        );
+        if (!target) return;
+        const toColumn = columns[target.columnIndex]!;
+        const source: CardSource = {
+          fromColumnId: column.id,
+          fromPosition: index,
+        };
+        const destination: CardDestination = {
+          toColumnId: toColumn.id,
+          toPosition: target.position,
+        };
+        if (!controlled) {
+          const next = moveCard(current, source, destination);
+          if (next !== current) {
+            setInternalBoard(next);
+            onBoardChange?.(next);
+          }
+        }
+        a11yFocus.current = `card:${keyOf(card.id)}`;
+        const event: CardDragEndEvent<TCard> = {
+          card: card as TCard,
+          source,
+          destination,
+          via: 'accessibility',
+        };
+        onEnd?.(event);
+        const count =
+          toColumn.cards.length + (target.columnIndex === from ? 0 : 1);
+        announce(
+          labels.cardMoved({
+            card: titleOf(card),
+            column: titleOf(toColumn),
+            position: target.position + 1,
+            count,
+          })
+        );
+      },
+
+      columnActions(_column, index) {
+        const columns = boardNow.current.columns;
+        const list = [];
+        if (index > 0 && columns[index - 1]) {
+          list.push({
+            name: 'moveBefore',
+            label: labels.moveColumnBefore(titleOf(columns[index - 1]!)),
+          });
+        }
+        if (columns[index + 1]) {
+          list.push({
+            name: 'moveAfter',
+            label: labels.moveColumnAfter(titleOf(columns[index + 1]!)),
+          });
+        }
+        return list;
+      },
+
+      performColumnAction(column, index, action: ColumnActionName) {
+        const {
+          board: current,
+          isControlled: controlled,
+          onColumnDragEnd: onEnd,
+          onBoardChange,
+        } = latest.current;
+        if (current.columns[index]?.id !== column.id) return;
+        const to = columnActionTarget(current.columns.length, index, action);
+        if (to === null) return;
+        const source: ColumnSource = { fromPosition: index };
+        const destination: ColumnDestination = { toPosition: to };
+        if (!controlled) {
+          const next = moveColumn(current, source, destination);
+          if (next !== current) {
+            setInternalBoard(next);
+            onBoardChange?.(next);
+          }
+        }
+        a11yFocus.current = `column:${keyOf(column.id)}`;
+        const event: ColumnDragEndEvent<TColumn> = {
+          column: column as TColumn,
+          source,
+          destination,
+          via: 'accessibility',
+        };
+        onEnd?.(event);
+        announce(
+          labels.columnMoved({
+            column: titleOf(column),
+            position: to + 1,
+            count: current.columns.length,
+          })
+        );
+      },
+    };
+    // columnsKey and hasDropRule stand in for the board and the rules, which
+    // the actions read fresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disableAccessibilityActions, labels, columnsKey, hasDropRule]);
+
   return (
     <KanbanThemeProvider value={theme}>
-      <DragProvider value={dragContext}>
-        <GestureHandlerRootView testID={testID} style={[base.boardRoot, style]}>
-          <Animated.View
-            ref={boardRef}
-            testID={`${testID}-viewport`}
-            style={base.boardViewport}
-            onLayout={handleLayout}
-            collapsable={false}
+      <A11yProvider value={a11y}>
+        <DragProvider value={dragContext}>
+          <GestureHandlerRootView
+            testID={testID}
+            // The drag math follows this direction, so it is set here. On
+            // web, `dir` also makes start/end styles follow it.
+            style={[base.boardRoot, style, { direction }]}
+            {...(IS_WEB ? ({ dir: direction } as object) : null)}
           >
-            <ScrollView
-              ref={boardScrollRef}
-              horizontal
-              style={base.boardScroll}
-              contentContainerStyle={[base.boardContent, styles?.boardContent]}
-              showsHorizontalScrollIndicator={false}
-              scrollEnabled={!isDragging && !isColumnDragging}
-              scrollEventThrottle={16}
-              onScroll={handleBoardScroll}
-              onContentSizeChange={handleBoardContentSize}
-              snapToInterval={shouldSnap ? snapInterval : undefined}
-              snapToAlignment="start"
-              decelerationRate={shouldSnap ? 'fast' : 'normal'}
-              disableIntervalMomentum={shouldSnap}
+            <Animated.View
+              ref={boardRef}
+              testID={`${testID}-viewport`}
+              style={base.boardViewport}
+              onLayout={handleLayout}
+              collapsable={false}
             >
-              {columnItems.map((item) => {
-                if (item.type !== 'card') {
-                  const isEnd = item.type === 'end';
+              <ScrollView
+                ref={boardScrollRef}
+                horizontal
+                style={base.boardScroll}
+                contentContainerStyle={[
+                  base.boardContent,
+                  styles?.boardContent,
+                ]}
+                showsHorizontalScrollIndicator={false}
+                scrollEnabled={!isDragging && !isColumnDragging}
+                scrollEventThrottle={16}
+                onScroll={handleBoardScroll}
+                onContentSizeChange={handleBoardContentSize}
+                testID={`${testID}-scroll`}
+                snapToInterval={shouldSnap ? snapInterval : undefined}
+                snapToAlignment="start"
+                decelerationRate={shouldSnap ? 'fast' : 'normal'}
+                disableIntervalMomentum={shouldSnap}
+              >
+                {columnItems.map((item) => {
+                  if (item.type !== 'card') {
+                    const isEnd = item.type === 'end';
+                    return (
+                      <ColumnSpacer
+                        key={isEnd ? 'column-spacer:end' : item.key}
+                        slot={item.slot}
+                        initiallyOpen={item.slot === columnDrag!.sourceIndex}
+                        step={step}
+                        boxWidth={resolvedColumnWidth}
+                        boxHeight={columnDrag!.height}
+                        gap={columnGap}
+                        end={isEnd}
+                        base={base}
+                        styles={styles}
+                      />
+                    );
+                  }
+                  const { card: column, index, hidden: lifted } = item;
+                  const columnKey = keyOf(column.id);
+                  const isSource = drag?.sourceColumnKey === columnKey;
                   return (
-                    <ColumnSpacer
-                      key={isEnd ? 'column-spacer:end' : item.key}
-                      slot={item.slot}
-                      initiallyOpen={item.slot === columnDrag!.sourceIndex}
-                      step={step}
-                      boxWidth={resolvedColumnWidth}
-                      boxHeight={columnDrag!.height}
-                      gap={columnGap}
-                      end={isEnd}
+                    <Column
+                      key={columnKey}
+                      column={column}
+                      index={index}
+                      width={resolvedColumnWidth}
+                      maxHeight={columnMaxHeight}
+                      fill={columnHeight === 'fill'}
+                      theme={theme}
                       base={base}
                       styles={styles}
+                      labels={labels}
+                      showCardCount={showCardCount}
+                      renderCard={renderCard}
+                      renderColumnHeader={renderColumnHeader}
+                      renderColumnFooter={renderColumnFooter}
+                      renderEmptyColumn={renderEmptyColumn}
+                      onCardPress={onCardPress}
+                      canDragCard={canDragCard}
+                      placeholder={placeholder}
+                      isDragging={isDragging}
+                      draggedHeight={drag?.height ?? 0}
+                      hiddenCardId={isSource ? drag!.card.id : undefined}
+                      sourceSlot={isSource ? drag!.sourceIndex : undefined}
+                      columnDraggable={
+                        !disableColumnDrag && (canDragColumn?.(column) ?? true)
+                      }
+                      lifted={lifted}
+                      liftedLeft={boardLeft + index * step}
+                      virtualize={virtualize}
+                      estimatedCardHeight={estimatedCardHeight}
                     />
                   );
-                }
-                const { card: column, index, hidden: lifted } = item;
-                const columnKey = keyOf(column.id);
-                const isSource = drag?.sourceColumnKey === columnKey;
-                return (
-                  <Column
-                    key={columnKey}
-                    column={column}
-                    index={index}
-                    width={resolvedColumnWidth}
-                    maxHeight={columnMaxHeight}
-                    fill={columnHeight === 'fill'}
-                    theme={theme}
-                    base={base}
-                    styles={styles}
-                    labels={labels}
-                    showCardCount={showCardCount}
-                    renderCard={renderCard}
-                    renderColumnHeader={renderColumnHeader}
-                    renderColumnFooter={renderColumnFooter}
-                    renderEmptyColumn={renderEmptyColumn}
-                    onCardPress={onCardPress}
-                    canDragCard={canDragCard}
-                    placeholder={placeholder}
-                    isDragging={isDragging}
-                    draggedHeight={drag?.height ?? 0}
-                    hiddenCardId={isSource ? drag!.card.id : undefined}
-                    sourceSlot={isSource ? drag!.sourceIndex : undefined}
-                    columnDraggable={
-                      !disableColumnDrag && (canDragColumn?.(column) ?? true)
-                    }
-                    lifted={lifted}
-                    liftedLeft={boardLeft + index * step}
-                    virtualize={virtualize}
-                    estimatedCardHeight={estimatedCardHeight}
-                  />
-                );
-              })}
-            </ScrollView>
+                })}
+              </ScrollView>
 
-            {drag ? (
-              <DragOverlay
-                card={drag.card}
-                column={drag.column}
-                index={drag.sourceIndex}
-                width={drag.width}
-                theme={theme}
-                base={base}
-                styles={styles}
-                renderCard={renderDragPreview ?? renderCard}
-                customPreview={renderDragPreview !== undefined}
-                lift={liftStyle}
-              />
-            ) : null}
+              {drag ? (
+                <DragOverlay
+                  card={drag.card}
+                  column={drag.column}
+                  index={drag.sourceIndex}
+                  width={drag.width}
+                  theme={theme}
+                  base={base}
+                  styles={styles}
+                  renderCard={renderDragPreview ?? renderCard}
+                  customPreview={renderDragPreview !== undefined}
+                  lift={liftStyle}
+                  rtl={isRTL}
+                />
+              ) : null}
 
-            {columnDrag ? (
-              <ColumnDragOverlay
-                column={columnDrag.column}
-                index={columnDrag.sourceIndex}
-                width={columnDrag.width}
-                height={columnDrag.height}
-                cards={columnDrag.cards}
-                theme={theme}
-                base={base}
-                styles={styles}
-                labels={labels}
-                showCardCount={showCardCount}
-                renderCard={renderCard}
-                renderColumnHeader={renderColumnHeader}
-                renderColumnFooter={renderColumnFooter}
-                renderEmptyColumn={renderEmptyColumn}
-                lift={liftStyle}
-              />
-            ) : null}
-          </Animated.View>
-        </GestureHandlerRootView>
-      </DragProvider>
+              {columnDrag ? (
+                <ColumnDragOverlay
+                  column={columnDrag.column}
+                  index={columnDrag.sourceIndex}
+                  width={columnDrag.width}
+                  height={columnDrag.height}
+                  cards={columnDrag.cards}
+                  theme={theme}
+                  base={base}
+                  styles={styles}
+                  labels={labels}
+                  showCardCount={showCardCount}
+                  renderCard={renderCard}
+                  renderColumnHeader={renderColumnHeader}
+                  renderColumnFooter={renderColumnFooter}
+                  renderEmptyColumn={renderEmptyColumn}
+                  lift={liftStyle}
+                  rtl={isRTL}
+                />
+              ) : null}
+            </Animated.View>
+          </GestureHandlerRootView>
+        </DragProvider>
+      </A11yProvider>
     </KanbanThemeProvider>
   );
 }
+
+const IS_WEB = Platform.OS === 'web';
 
 const numberOr = (value: unknown, fallback: number) =>
   typeof value === 'number' ? value : fallback;
@@ -875,6 +1184,7 @@ interface DragOverlayProps<
   /** `renderDragPreview` draws it: no default lifted shadow. */
   customPreview: boolean;
   lift: ResolvedDragStyle;
+  rtl: boolean;
 }
 
 /** The lifted card that follows the finger, drawn above every column. */
@@ -892,6 +1202,7 @@ function DragOverlay<
   renderCard,
   customPreview,
   lift: liftStyle,
+  rtl: rtlLayout,
 }: DragOverlayProps<TCard, TColumn>) {
   const { shared } = useDragContext();
   const { overlayX, overlayY, lift } = shared;
@@ -912,9 +1223,13 @@ function DragOverlay<
   return (
     <Animated.View
       testID="kanban-drag-overlay"
+      // Drag visuals only: screen readers skip them.
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
       pointerEvents="none"
       style={[
         base.dragOverlay,
+        leftEdge(rtlLayout),
         !customPreview && base.dragShadow,
         { width },
         styles?.dragOverlay,

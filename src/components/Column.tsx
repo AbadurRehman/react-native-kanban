@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentRef,
   type ReactNode,
 } from 'react';
 import {
@@ -13,6 +14,7 @@ import {
   Text,
   View,
   useWindowDimensions,
+  type AccessibilityActionEvent,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -32,6 +34,9 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { useKanbanA11y } from '../a11y/A11yContext';
+import { FOCUS_DELAY_MS, focusElement } from '../a11y/announce';
+import { titleOf, type ColumnActionName } from '../a11y/moves';
 import { DROP_MS, LAYOUT_MS } from '../dnd/constants';
 import { useDragContext } from '../dnd/DragContext';
 import { reportDragError } from '../dnd/debug';
@@ -532,7 +537,29 @@ function ColumnImpl<
     index,
   ]);
 
-  const shown = virtualize ? range : allCards;
+  // A card just moved here with a screen-reader action takes focus once it
+  // renders: include it even if it landed outside the window.
+  const a11y = useKanbanA11y();
+  const { focusTarget } = a11y;
+  const focusIndex = focusTarget.current?.startsWith('card:')
+    ? cardOrder.indexOf(focusTarget.current.slice('card:'.length))
+    : -1;
+  let shown = virtualize ? range : allCards;
+  if (virtualize && focusIndex >= 0) {
+    if (focusIndex < shown.first || focusIndex > shown.last) {
+      shown = {
+        first: Math.min(shown.first, focusIndex),
+        last: Math.max(shown.last, focusIndex),
+      };
+    }
+  }
+  // Keep it rendered after the focus request is used up.
+  useLayoutEffect(() => {
+    if (virtualize && shown !== range) {
+      rangeRef.current = shown;
+      setRange(shown);
+    }
+  }, [virtualize, shown, range]);
   const items = useMemo(
     () => buildColumnItems(column.cards, isDragging, hiddenCardId, shown),
     [column.cards, isDragging, hiddenCardId, shown]
@@ -579,6 +606,30 @@ function ColumnImpl<
     theme,
   };
 
+  // Screen readers: the header is one heading ("To do, 5 cards") with Move
+  // before / after actions; focus follows it after such a move.
+  const headerGrouped = a11y.enabled && !lifted;
+  const handleHeaderAction = useCallback(
+    (event: AccessibilityActionEvent) => {
+      a11y.performColumnAction(
+        column,
+        index,
+        event.nativeEvent.actionName as ColumnActionName
+      );
+    },
+    [a11y, column, index]
+  );
+  const headerRef = useRef<ComponentRef<typeof View>>(null);
+  useEffect(() => {
+    if (focusTarget.current !== `column:${columnKey}`) return;
+    focusTarget.current = null;
+    const timer = setTimeout(
+      () => focusElement(headerRef.current),
+      FOCUS_DELAY_MS
+    );
+    return () => clearTimeout(timer);
+  }, [focusTarget, columnKey, index]);
+
   // While lifted, the column keeps its place and size out of the layout flow
   // and only its content fades: iOS cancels a gesture whose view stops
   // accepting touches (opacity 0, pointerEvents none).
@@ -598,7 +649,7 @@ function ColumnImpl<
           ? [
               columnStyles.lifted,
               {
-                left: liftedLeft,
+                start: liftedLeft, // from the start edge, in either direction
                 top: columnTop.current,
                 height: columnHeight.current,
               },
@@ -612,9 +663,26 @@ function ColumnImpl<
           collapsable={false}
         >
           <View
+            ref={headerRef}
+            testID={`kanban-column-heading-${column.id}`}
             style={hide}
             accessibilityElementsHidden={lifted}
             importantForAccessibility={lifted ? 'no-hide-descendants' : 'auto'}
+            accessible={headerGrouped || undefined}
+            accessibilityRole={headerGrouped ? 'header' : undefined}
+            accessibilityLabel={
+              headerGrouped && !renderColumnHeader
+                ? `${titleOf(column)}, ${a11y.labels.cardCount(column.cards.length)}`
+                : undefined
+            }
+            accessibilityActions={
+              headerGrouped && columnDraggable
+                ? a11y.columnActions(column, index)
+                : undefined
+            }
+            onAccessibilityAction={
+              headerGrouped && columnDraggable ? handleHeaderAction : undefined
+            }
           >
             {renderColumnHeader ? (
               renderColumnHeader(column, info)

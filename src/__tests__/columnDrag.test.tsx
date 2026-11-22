@@ -22,6 +22,9 @@ import {
 } from '../index';
 import { layout, queueLift, titlesIn } from '../__fixtures__/dragHarness';
 
+// Drag visuals are hidden from screen readers; tests still look at them.
+const HIDDEN = { includeHiddenElements: true };
+
 /**
  * Three columns, 280 wide, 12 apart, after 16pt of board padding:
  *   todo 16–296 (cards 1, 2)   doing 308–588 (card 3)   done 600–880 (empty)
@@ -136,13 +139,16 @@ describe('column drag and drop', () => {
       column: board3.columns[0],
       source: { fromPosition: 0 },
       destination: { toPosition: 1 },
+      via: 'drag',
     });
     expect(onBoardChange).toHaveBeenCalledTimes(1);
     expect(columnOrder()).toEqual(['doing', 'todo', 'done']);
     // Cards travel with their column.
     expect(titlesIn('todo')).toEqual(['1', '2']);
-    expect(screen.queryByTestId('kanban-column-drag-overlay')).toBeNull();
-    expect(screen.queryByTestId('kanban-column-spacer')).toBeNull();
+    expect(
+      screen.queryByTestId('kanban-column-drag-overlay', HIDDEN)
+    ).toBeNull();
+    expect(screen.queryByTestId('kanban-column-spacer', HIDDEN)).toBeNull();
   });
 
   it('drops a column at the end', async () => {
@@ -254,10 +260,10 @@ describe('column drag and drop', () => {
       gesture.activate({ absoluteX: 100, absoluteY: 30 });
     });
 
-    const overlay = screen.getByTestId('kanban-column-drag-overlay');
-    expect(within(overlay).getByText('To do')).toBeTruthy();
-    expect(within(overlay).getByText('One')).toBeTruthy();
-    expect(within(overlay).getByText('Two')).toBeTruthy();
+    const overlay = screen.getByTestId('kanban-column-drag-overlay', HIDDEN);
+    expect(within(overlay).getByText('To do', HIDDEN)).toBeTruthy();
+    expect(within(overlay).getByText('One', HIDDEN)).toBeTruthy();
+    expect(within(overlay).getByText('Two', HIDDEN)).toBeTruthy();
     expect(StyleSheet.flatten(overlay.props.style)).toMatchObject({
       width: 280,
       height: 300,
@@ -270,7 +276,7 @@ describe('column drag and drop', () => {
     const style = StyleSheet.flatten(original.props.style);
     expect(style).toMatchObject({
       position: 'absolute',
-      left: 16,
+      start: 16, // from the start edge: the right one in RTL boards
       top: 16,
       height: 300,
       backgroundColor: 'transparent',
@@ -287,9 +293,11 @@ describe('column drag and drop', () => {
 
     // Landing spots before "doing" and "done", one at the end; the one at
     // the column's own slot starts open.
-    expect(screen.getAllByTestId('kanban-column-spacer')).toHaveLength(2);
-    expect(screen.getByTestId('kanban-column-spacer-end')).toBeTruthy();
-    const [first] = screen.getAllByTestId('kanban-column-placeholder');
+    expect(screen.getAllByTestId('kanban-column-spacer', HIDDEN)).toHaveLength(
+      2
+    );
+    expect(screen.getByTestId('kanban-column-spacer-end', HIDDEN)).toBeTruthy();
+    const [first] = screen.getAllByTestId('kanban-column-placeholder', HIDDEN);
     expect(StyleSheet.flatten(first!.props.style)).toMatchObject({
       width: 280,
       height: 300,
@@ -304,13 +312,15 @@ describe('column drag and drop', () => {
         { state: State.END },
       ]);
     });
-    expect(screen.queryByTestId('kanban-drag-overlay')).toBeNull();
+    expect(screen.queryByTestId('kanban-drag-overlay', HIDDEN)).toBeNull();
 
     await act(async () => {
       gesture.update({ absoluteX: 500, absoluteY: 40 });
       gesture.end();
     });
-    expect(screen.queryByTestId('kanban-column-drag-overlay')).toBeNull();
+    expect(
+      screen.queryByTestId('kanban-column-drag-overlay', HIDDEN)
+    ).toBeNull();
     expect(
       StyleSheet.flatten(screen.getByTestId('kanban-column-todo').props.style)
         .position
@@ -339,9 +349,11 @@ describe('column drag and drop', () => {
       gesture.begin({ absoluteX: 100, absoluteY: 30 });
       gesture.activate({ absoluteX: 100, absoluteY: 30 });
     });
-    const overlay = within(screen.getByTestId('kanban-column-drag-overlay'));
-    expect(overlay.queryByText('One')).toBeNull();
-    expect(overlay.getByText('Two')).toBeTruthy();
+    const overlay = within(
+      screen.getByTestId('kanban-column-drag-overlay', HIDDEN)
+    );
+    expect(overlay.queryByText('One', HIDDEN)).toBeNull();
+    expect(overlay.getByText('Two', HIDDEN)).toBeTruthy();
     await act(async () => gesture.end());
   });
 
@@ -366,7 +378,9 @@ describe('column drag and drop', () => {
       ]);
     });
     expect(onColumnDragStart).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('kanban-column-drag-overlay')).toBeNull();
+    expect(
+      screen.queryByTestId('kanban-column-drag-overlay', HIDDEN)
+    ).toBeNull();
     await act(async () => card.end());
   });
 });
@@ -420,8 +434,10 @@ describe('column drag options', () => {
       gesture.begin({ absoluteX: 100, absoluteY: 30 });
       gesture.activate({ absoluteX: 100, absoluteY: 30 });
     });
-    const overlay = within(screen.getByTestId('kanban-column-drag-overlay'));
-    expect(overlay.getByText('# To do')).toBeTruthy();
+    const overlay = within(
+      screen.getByTestId('kanban-column-drag-overlay', HIDDEN)
+    );
+    expect(overlay.getByText('# To do', HIDDEN)).toBeTruthy();
     await act(async () => gesture.end());
   });
 });

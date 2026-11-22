@@ -46,7 +46,40 @@ export interface KanbanStyles {
 export interface KanbanLabels {
   /** Shown in a column with no cards. */
   emptyColumn: string;
+
+  // Screen readers. Functions get plain strings (titles, 1-based positions),
+  // so they're easy to translate.
+  /** A card's place, read after its text: "2 of 5 in To do". */
+  cardPosition: (info: {
+    position: number;
+    count: number;
+    column: string;
+  }) => string;
+  /** A column's card count, read in its header: "5 cards". */
+  cardCount: (count: number) => string;
+  /** Card actions. */
+  moveCardUp: string;
+  moveCardDown: string;
+  moveCardToColumn: (column: string) => string;
+  /** Column header actions. */
+  moveColumnBefore: (column: string) => string;
+  moveColumnAfter: (column: string) => string;
+  /** Announced after a move made with an action. */
+  cardMoved: (info: {
+    card: string;
+    column: string;
+    position: number;
+    count: number;
+  }) => string;
+  columnMoved: (info: {
+    column: string;
+    position: number;
+    count: number;
+  }) => string;
 }
+
+/** How a move happened: a drag, or a screen-reader action. */
+export type KanbanMoveSource = 'drag' | 'accessibility';
 
 export interface CardRenderInfo<TColumn> {
   /** The column the card is in. */
@@ -112,6 +145,8 @@ export interface CardDragEndEvent<TCard> extends CardDragStartEvent<TCard> {
    * was put back where it started.
    */
   destination: CardDestination;
+  /** `'accessibility'` when the card was moved with a screen-reader action. */
+  via: KanbanMoveSource;
 }
 
 export interface ColumnDragStartEvent<TColumn> {
@@ -127,6 +162,8 @@ export interface ColumnDragEndEvent<
    * put back where it started.
    */
   destination: ColumnDestination;
+  /** `'accessibility'` when the column was moved with a screen-reader action. */
+  via: KanbanMoveSource;
 }
 
 /**
@@ -169,10 +206,13 @@ export interface BoardBaseProps<
   /** `'comfortable'` (default) or `'compact'`. */
   density?: KanbanDensity;
   /**
-   * Column width in points, or `'fullScreen'` to show one column per screen
-   * (great on phones). Defaults to 280 (240 when compact).
+   * Column width in points; `'fullScreen'` to show one column per screen
+   * (great on phones); or `{ min, max }` to fit as many whole columns of at
+   * least `min` as the board's width allows, sharing it up to `max` each:
+   * one per screen on phones, more on tablets, re-fitted on rotation and
+   * in split view. Defaults to 280 (240 when compact).
    */
-  columnWidth?: number | 'fullScreen';
+  columnWidth?: number | 'fullScreen' | { min: number; max?: number };
   /**
    * `'content'` (default): columns are as tall as their cards and scroll once
    * they reach the bottom of the board, keeping the footer under the last card.
@@ -203,9 +243,10 @@ export interface BoardBaseProps<
   /** Turn off long-press dragging. */
   disableCardDrag?: boolean;
   /**
-   * How long a card must be pressed before it lifts, in ms. `300` by default.
-   * `0` lifts it on the first movement instead; columns can then only be
-   * scrolled from outside the cards.
+   * How long a card must be pressed before it lifts, in ms. `300` by default
+   * (on web with a mouse or trackpad, `0`: drags start on movement). `0` lifts
+   * it on the first movement instead; on touch screens columns can then only
+   * be scrolled from outside the cards.
    */
   dragActivationDelay?: number;
   /** Return `false` to lock a card in place. */
@@ -249,6 +290,22 @@ export interface BoardBaseProps<
    * and drop positions. Defaults to the average of the measured cards.
    */
   estimatedCardHeight?: number;
+
+  /**
+   * Turn off the screen-reader actions. By default each card is one
+   * screen-reader element (its text is read together, then its position)
+   * with Move up / Move down / Move to ‹column› actions, and column headers
+   * get Move before / after ‹column›. Turn this off if your cards contain
+   * buttons that screen readers must reach on their own.
+   */
+  disableAccessibilityActions?: boolean;
+
+  /**
+   * Layout direction. `'rtl'` puts the first column on the right and mirrors
+   * dragging and auto-scroll. Defaults to the app's direction
+   * (`I18nManager.isRTL`); set it on web, where that is always LTR.
+   */
+  direction?: 'ltr' | 'rtl';
 
   /** Turn off dragging columns by their header. */
   disableColumnDrag?: boolean;

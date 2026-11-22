@@ -363,3 +363,23 @@ export function buildColumnItems<TCard extends { id: KanbanId }>(
   }
   return items;
 }
+
+/**
+ * Width of responsive columns (`columnWidth={{ min, max }}`): as many whole
+ * columns of at least `min` as fit in `available` share it (gaps between
+ * them), up to `max` each. Never more columns than the board has; when not
+ * even one fits, a column takes the full width. Rounded down to whole points.
+ */
+export function responsiveColumnWidth(
+  available: number,
+  gap: number,
+  columnCount: number,
+  min: number,
+  max = Infinity
+): number {
+  if (available <= 0) return Math.max(0, min);
+  const fit = Math.floor((available + gap) / (min + gap));
+  const perScreen = Math.max(1, Math.min(fit, Math.max(1, columnCount)));
+  const shared = (available - (perScreen - 1) * gap) / perScreen;
+  return Math.floor(Math.min(Math.max(min, shared), max, available));
+}

@@ -1,9 +1,18 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type ComponentRef,
+} from 'react';
+import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
+  type AccessibilityActionEvent,
   type LayoutChangeEvent,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -14,6 +23,9 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { useKanbanA11y } from '../a11y/A11yContext';
+import { FOCUS_DELAY_MS, focusElement } from '../a11y/announce';
+import { titleOf, type CardActionName } from '../a11y/moves';
 import { DROP_MS } from '../dnd/constants';
 import { useDragContext } from '../dnd/DragContext';
 import { reportDragError } from '../dnd/debug';
@@ -243,6 +255,61 @@ function CardItemImpl<
     onCardPress?.(card, { column, index, theme });
   }, [dragCount, onCardPress, card, column, index, theme]);
 
+  // Screen readers: the card is one element (its text read together, then
+  // its place in the column) with Move actions, unless turned off. Web has
+  // no such actions: there the press target stays its own focusable button.
+  const a11y = useKanbanA11y();
+  const grouped = a11y.enabled && !hidden && Platform.OS !== 'web';
+  const movable = enabled && draggable;
+  const positionText = a11y.labels.cardPosition({
+    position: index + 1,
+    count: column.cards.length,
+    column: titleOf(column),
+  });
+  // Android turns accessibilityValue into the whole content description, so
+  // TalkBack would skip the card's text: read the position as a last child.
+  const positionAsChild = Platform.OS === 'android';
+  const positionChild = positionAsChild ? (
+    <Text style={cardStyles.srOnly}>{positionText}</Text>
+  ) : null;
+  const a11yActions = grouped
+    ? [
+        ...(onCardPress ? [{ name: 'activate' }] : []),
+        ...(movable ? a11y.cardActions(card, column, index) : []),
+      ]
+    : undefined;
+  const handleA11yAction = useCallback(
+    (event: AccessibilityActionEvent) => {
+      const name = event.nativeEvent.actionName;
+      if (name === 'activate') handlePress();
+      else a11y.performCardAction(card, column, index, name as CardActionName);
+    },
+    [a11y, card, column, index, handlePress]
+  );
+  const groupProps = {
+    accessible: true,
+    accessibilityValue: positionAsChild ? undefined : { text: positionText },
+    accessibilityActions: a11yActions,
+    onAccessibilityAction: handleA11yAction,
+  };
+
+  // After a move made with an action, focus follows the card.
+  const contentRef = useRef<ComponentRef<typeof View>>(null);
+  const pressRef = useRef<ComponentRef<typeof View>>(null);
+  // A pressable card is grouped on its Pressable: on Android a clickable
+  // child is left out of its parent's label, so the text would go unread.
+  const groupOnPress = grouped && !!onCardPress;
+  const { focusTarget } = a11y;
+  useEffect(() => {
+    if (focusTarget.current !== `card:${cardKey}`) return;
+    focusTarget.current = null;
+    const timer = setTimeout(
+      () => focusElement((groupOnPress ? pressRef : contentRef).current),
+      FOCUS_DELAY_MS
+    );
+    return () => clearTimeout(timer);
+  }, [focusTarget, cardKey, index, column.id, groupOnPress]);
+
   const info: CardRenderInfo<TColumn> = { column, index, theme };
   const content = renderCard ? (
     renderCard(card, info)
@@ -269,25 +336,32 @@ function CardItemImpl<
       <GestureDetector gesture={pan}>
         <Animated.View ref={cardRef} collapsable={false}>
           <View
+            ref={contentRef}
             testID={`kanban-content-${card.id}`}
             style={hidden ? cardStyles.invisible : undefined}
             accessibilityElementsHidden={hidden}
             importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
+            {...(grouped && !groupOnPress ? groupProps : null)}
           >
             {onCardPress ? (
               <Pressable
+                ref={pressRef}
+                testID={`kanban-press-${card.id}`}
                 accessibilityRole="button"
-                accessibilityLabel={card.title ?? String(card.id)}
+                accessibilityLabel={grouped ? undefined : titleOf(card)}
+                {...(groupOnPress ? groupProps : null)}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
                 onPress={handlePress}
                 style={({ pressed }) => (pressed ? base.pressed : undefined)}
               >
                 {content}
+                {groupOnPress ? positionChild : null}
               </Pressable>
             ) : (
               content
             )}
+            {grouped && !groupOnPress ? positionChild : null}
           </View>
         </Animated.View>
       </GestureDetector>
@@ -302,4 +376,12 @@ const cardStyles = StyleSheet.create({
   // `top` keeps it where it was.
   lifted: { position: 'absolute', left: 0, right: 0 },
   invisible: { opacity: 0 },
+  // Read by screen readers, not shown (1pt so TalkBack counts it as visible).
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    overflow: 'hidden',
+    opacity: 0,
+  },
 });
